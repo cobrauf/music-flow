@@ -1,8 +1,8 @@
-# ZenFlow
+# Music Flow
 
-ZenFlow is an interactive mobile and web audio-visual experience designed to guide users into a psychological flow state through rhythmic interaction and reactive, tranquil art.
+Music Flow is an interactive mobile and web audio-visual experience designed to guide users into a psychological flow state through rhythmic interaction and reactive, tranquil art.
 
-Unlike traditional rhythm games that emphasize high-speed reflexes, ZenFlow prioritizes calmness, fluid movement, and aesthetic immersion.
+Unlike traditional rhythm games that emphasize high-speed reflexes, Music Flow prioritizes calmness, fluid movement, and aesthetic immersion.
 
 ## MVP Goal
 
