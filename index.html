@@ -634,27 +634,34 @@
                 <label>
                   Minimum speed
                   <div class="slider-row">
-                    <input id="trace-min-speed" type="range" min="1" max="10" value="6">
-                    <span id="trace-min-speed-value">6</span>
+                    <input id="trace-min-speed" type="range" min="1" max="10" value="1">
+                    <span id="trace-min-speed-value">1</span>
                   </div>
                 </label>
                 <label>
                   Maximum speed
                   <div class="slider-row">
-                    <input id="trace-max-speed" type="range" min="2" max="50" value="50">
-                    <span id="trace-max-speed-value">50</span>
+                    <input id="trace-max-speed" type="range" min="2" max="50" value="10">
+                    <span id="trace-max-speed-value">10</span>
                   </div>
                 </label>
                 <label>
                   Coloring page opacity
                   <div class="slider-row">
-                    <input id="trace-opacity" type="range" min="10" max="100" value="90">
-                    <span id="trace-opacity-value">90%</span>
+                    <input id="trace-opacity" type="range" min="10" max="100" value="20">
+                    <span id="trace-opacity-value">20%</span>
+                  </div>
+                </label>
+                <label>
+                  Trace zoom
+                  <div class="slider-row">
+                    <input id="trace-zoom" type="range" min="1" max="4" step="0.25" value="4">
+                    <span id="trace-zoom-value">4x</span>
                   </div>
                 </label>
                 <label>
                   Highlight color
-                  <input class="input" id="trace-highlight-color" type="color" value="#edcb7e">
+                  <input class="input" id="trace-highlight-color" type="color" value="#ffdf40">
                 </label>
                 <label>
                   Highlight brightness
@@ -767,10 +774,12 @@
           lastPoint: null,
           lastGoodPoint: null,
           smoothedSpeed: 0,
-          minSpeed: 60,
-          maxSpeed: 500,
-          opacity: 0.9,
-          highlightColor: "#edcb7e",
+          minSpeed: 10,
+          maxSpeed: 100,
+          opacity: 0.2,
+          zoom: 4,
+          defaultZoom: 4,
+          highlightColor: "#ffdf40",
           highlightBrightness: 1,
           threshold: 28,
           gate: "idle",
@@ -815,6 +824,8 @@
       const traceMaxSpeedValue = document.getElementById("trace-max-speed-value");
       const traceOpacityInput = document.getElementById("trace-opacity");
       const traceOpacityValue = document.getElementById("trace-opacity-value");
+      const traceZoomInput = document.getElementById("trace-zoom");
+      const traceZoomValue = document.getElementById("trace-zoom-value");
       const traceHighlightColorInput = document.getElementById("trace-highlight-color");
       const traceHighlightBrightnessInput = document.getElementById("trace-highlight-brightness");
       const traceHighlightBrightnessValue = document.getElementById("trace-highlight-brightness-value");
@@ -1300,13 +1311,21 @@
         return state.trace.mode === "tracing";
       }
 
+      function isTraceZoomAtDefault() {
+        return Math.abs(state.trace.zoom - state.trace.defaultZoom) < 0.001;
+      }
+
+      function isTracingInputEnabled() {
+        return isTracingReady() && isTraceZoomAtDefault();
+      }
+
       function getTraceBounds(width, height) {
         const sourceWidth = state.trace.image ? state.trace.image.width : 1;
         const sourceHeight = state.trace.image ? state.trace.image.height : 1;
         const reservedBottom = 132;
         const maxWidth = width * 0.86;
         const maxHeight = Math.max(180, (height - reservedBottom) * 0.74);
-        const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight);
+        const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight) * state.trace.zoom;
         const drawWidth = sourceWidth * scale;
         const drawHeight = sourceHeight * scale;
         const x = (width - drawWidth) / 2;
@@ -1339,6 +1358,7 @@
         }
         drawTraceHotspot();
         drawTraceTouchGlow(now);
+        drawTraceZoomDisabledOverlay(width, height);
 
         ctx.save();
         ctx.strokeStyle = "rgba(102, 216, 203, 0.18)";
@@ -1347,8 +1367,22 @@
         ctx.restore();
       }
 
+      function drawTraceZoomDisabledOverlay(width, height) {
+        if (isTraceZoomAtDefault()) return;
+
+        ctx.save();
+        ctx.fillStyle = "rgba(5, 16, 19, 0.42)";
+        ctx.fillRect(0, 0, width, height);
+        ctx.fillStyle = "rgba(235, 249, 246, 0.92)";
+        ctx.font = "800 15px Inter, system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(`Tracing disabled at ${formatTraceZoom(state.trace.zoom)}. Zoom to ${formatTraceZoom(state.trace.defaultZoom)} to trace.`, width / 2, Math.max(72, height * 0.14));
+        ctx.restore();
+      }
+
       function updateTraceIdleGate(now) {
-        if (!isTracingReady() || !state.trace.isPointerDown || !state.trace.lastPoint) return;
+        if (!isTracingInputEnabled() || !state.trace.isPointerDown || !state.trace.lastPoint) return;
         if (now - state.trace.lastPoint.time > 420) {
           setTraceGate("slow");
         }
@@ -1600,6 +1634,11 @@
       }
 
       function startTracing(event) {
+        if (!isTracingInputEnabled()) {
+          setTraceGate(isTracingReady() ? "zoom" : "ready");
+          return;
+        }
+
         ensureTraceBounds();
         const point = tracePointFromEvent(event);
         const path = { points: [] };
@@ -1614,6 +1653,11 @@
 
       function continueTracing(event) {
         if (!state.trace.isPointerDown || !state.trace.activePath) return;
+        if (!isTracingInputEnabled()) {
+          endTracing();
+          setTraceGate(isTracingReady() ? "zoom" : "ready");
+          return;
+        }
 
         ensureTraceBounds();
         const point = tracePointFromEvent(event);
@@ -1768,13 +1812,17 @@
         };
       }
 
+      function formatTraceZoom(zoom) {
+        return `${Number(zoom).toFixed(2).replace(/\.?0+$/, "")}x`;
+      }
+
       function endTracing() {
         state.trace.isPointerDown = false;
         state.trace.activePath = null;
         state.trace.lastPoint = null;
         state.trace.smoothedSpeed = 0;
         if (isTracingReady()) {
-          setTraceGate("ready");
+          setTraceGate(isTraceZoomAtDefault() ? "ready" : "zoom");
         }
       }
 
@@ -1794,6 +1842,10 @@
       }
 
       function setTraceGate(gate) {
+        if (isTracingReady() && !isTraceZoomAtDefault() && gate !== "zoom") {
+          gate = "zoom";
+        }
+
         state.trace.gate = gate;
         updateTraceStatus(gate);
 
@@ -1834,6 +1886,12 @@
 
         if (!state.trace.image) {
           traceStatus.textContent = "Upload a pattern.";
+          traceStatus.classList.add("warn");
+          return;
+        }
+
+        if (!isTraceZoomAtDefault()) {
+          traceStatus.textContent = `Tracing disabled. Zoom to ${formatTraceZoom(state.trace.defaultZoom)}.`;
           traceStatus.classList.add("warn");
           return;
         }
@@ -2398,6 +2456,17 @@
       traceOpacityInput.addEventListener("input", () => {
         state.trace.opacity = Number(traceOpacityInput.value) / 100;
         traceOpacityValue.textContent = `${traceOpacityInput.value}%`;
+      });
+
+      traceZoomInput.addEventListener("input", () => {
+        state.trace.zoom = Number(traceZoomInput.value);
+        traceZoomValue.textContent = formatTraceZoom(state.trace.zoom);
+        state.trace.bounds = null;
+        if (isTracingReady()) {
+          setTraceGate(isTraceZoomAtDefault() ? "ready" : "zoom");
+        } else {
+          updateTraceStatus("ready");
+        }
       });
 
       traceHighlightColorInput.addEventListener("input", () => {
