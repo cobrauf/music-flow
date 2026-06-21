@@ -52,22 +52,11 @@
 
       .app {
         min-height: 100vh;
-        display: grid;
-        grid-template-rows: auto 1fr;
+        display: block;
       }
 
       header {
-        position: sticky;
-        top: 0;
-        z-index: 5;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 18px;
-        padding: 16px clamp(18px, 4vw, 48px);
-        border-bottom: 1px solid var(--line);
-        background: rgba(8, 17, 20, 0.82);
-        backdrop-filter: blur(18px);
+        display: none;
       }
 
       .brand {
@@ -122,20 +111,118 @@
       }
 
       main {
-        display: grid;
-        grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+        display: block;
         min-height: 0;
       }
 
       aside {
+        position: fixed;
+        inset: 0 auto 0 0;
+        z-index: 20;
+        width: min(390px, 92vw);
+        overflow: auto;
         border-right: 1px solid var(--line);
-        background: rgba(7, 15, 18, 0.58);
+        background: rgba(7, 15, 18, 0.94);
         padding: 22px;
+        transform: translateX(-102%);
+        transition: transform 180ms ease;
+        backdrop-filter: blur(18px);
+      }
+
+      body.drawer-open aside {
+        transform: translateX(0);
+      }
+
+      .drawer-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 15;
+        display: none;
+        background: rgba(0, 0, 0, 0.38);
+      }
+
+      body.drawer-open .drawer-backdrop {
+        display: block;
+      }
+
+      .drawer-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+
+      .drawer-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+
+      .icon-button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 42px;
+        height: 42px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        color: var(--ink);
+        background: rgba(7, 15, 18, 0.76);
+        cursor: pointer;
+      }
+
+      .menu-toggle {
+        position: fixed;
+        top: 18px;
+        left: 18px;
+        z-index: 12;
+        backdrop-filter: blur(14px);
+      }
+
+      .menu-toggle svg,
+      .icon-button svg {
+        width: 20px;
+        height: 20px;
+      }
+
+      details.panel {
+        padding: 0;
+      }
+
+      details.panel > summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        min-height: 52px;
+        padding: 0 16px;
+        cursor: pointer;
+        font-weight: 800;
+        list-style: none;
+      }
+
+      details.panel > summary::-webkit-details-marker {
+        display: none;
+      }
+
+      details.panel > summary::after {
+        content: "+";
+        color: var(--muted);
+        font-size: 1.2rem;
+      }
+
+      details.panel[open] > summary::after {
+        content: "-";
+      }
+
+      .panel-body {
+        padding: 0 16px 16px;
       }
 
       .stage {
         position: relative;
-        min-height: calc(100vh - 68px);
+        min-height: 100vh;
         overflow: hidden;
       }
 
@@ -151,8 +238,8 @@
         position: relative;
         z-index: 2;
         display: grid;
-        align-content: space-between;
-        min-height: calc(100vh - 68px);
+        align-content: end;
+        min-height: 100vh;
         padding: clamp(18px, 4vw, 46px);
         pointer-events: none;
       }
@@ -184,10 +271,50 @@
       }
 
       .readout {
+        display: none;
+      }
+
+      .player-bar {
+        pointer-events: auto;
         display: grid;
-        grid-template-columns: repeat(4, minmax(110px, 1fr));
-        gap: 10px;
-        width: min(720px, 100%);
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 14px;
+        align-items: center;
+        width: min(680px, calc(100vw - 36px));
+        margin: 0 auto;
+        padding: 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(7, 15, 18, 0.78);
+        backdrop-filter: blur(18px);
+      }
+
+      .play-toggle {
+        width: 54px;
+        min-height: 54px;
+        padding: 0;
+        border-radius: 8px;
+        font-size: 1.12rem;
+      }
+
+      .track-now {
+        min-width: 0;
+      }
+
+      .track-now strong,
+      .track-now span {
+        display: block;
+      }
+
+      .track-now strong {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .track-now span {
+        color: var(--muted);
+        font-size: 0.82rem;
       }
 
       .metric,
@@ -360,133 +487,122 @@
       }
 
       @media (max-width: 920px) {
-        header {
-          align-items: flex-start;
-          flex-direction: column;
-        }
-
-        main {
-          grid-template-columns: 1fr;
-        }
-
-        aside {
-          border-right: 0;
-          border-bottom: 1px solid var(--line);
-        }
-
         .stage,
         .stage-ui {
-          min-height: 720px;
-        }
-
-        .readout {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
+          min-height: 100vh;
         }
       }
     </style>
   </head>
   <body>
     <div class="app">
-      <header>
-        <div class="brand">
-          <div class="mark" aria-hidden="true"></div>
-          <div>
-            <h1>Music Flow</h1>
-            <p class="subhead">Phase 2 SB-backed prototype</p>
-          </div>
-        </div>
-        <nav class="nav" aria-label="Primary">
-          <a href="README.md">README</a>
-          <a href="data/sample-level-map.json">Sample Map</a>
-          <a href="supabase/migrations/202606210001_music_flow_foundation.sql">SB Schema</a>
-        </nav>
-      </header>
-
+      <button class="icon-button menu-toggle" id="drawer-open" type="button" aria-label="Open setup menu">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+        </svg>
+      </button>
+      <div class="drawer-backdrop" id="drawer-backdrop" aria-hidden="true"></div>
       <main>
         <aside>
-          <section class="panel" aria-labelledby="catalog-title">
-            <h3 id="catalog-title">Ready Tracks</h3>
-            <p>Fetches published `ready_tracks` from SB, with the local sample map as backup.</p>
-            <div class="track-list" id="track-list"></div>
-          </section>
-
-          <section class="panel" aria-labelledby="sb-title">
-            <h3 id="sb-title">SB Catalog</h3>
-            <p>Paste the public anon key once. It is saved only in this browser.</p>
-            <div class="controls">
-              <label>
-                Project URL
-                <input class="input" id="sb-url" type="url" value="https://veanlffmjvmuqbugsipm.supabase.co">
-              </label>
-              <label>
-                Anon key
-                <input class="input" id="sb-key" type="password" placeholder="eyJhbGciOi...">
-              </label>
-              <button class="button primary" id="load-sb" type="button">Load Ready Tracks</button>
-              <p class="status-note" id="catalog-status">Waiting for catalog.</p>
+          <div class="drawer-head">
+            <div class="drawer-title">
+              <div class="mark" aria-hidden="true"></div>
+              <div>
+                <h1>Music Flow</h1>
+                <p class="subhead">Setup</p>
+              </div>
             </div>
-          </section>
+            <button class="icon-button" id="drawer-close" type="button" aria-label="Close setup menu">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="m6 6 12 12M18 6 6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+              </svg>
+            </button>
+          </div>
 
-          <section class="panel" aria-labelledby="playback-title">
-            <h3 id="playback-title">Playback Test</h3>
-            <p>Choose any local `.mp3` or `.wav` to test synchronized browser playback. The file stays on this device.</p>
-            <div class="controls">
-              <input class="file" id="audio-file" type="file" accept="audio/mpeg,audio/wav,audio/mp3,.mp3,.wav">
-              <button class="button primary" id="play" type="button" disabled>Play</button>
-              <button class="button" id="pause" type="button" disabled>Pause</button>
-              <div class="timeline" aria-hidden="true"><span id="progress"></span></div>
+          <details class="panel" open>
+            <summary>Tracks</summary>
+            <div class="panel-body">
+              <p>Fetches published `ready_tracks` from SB, with the local sample map as backup.</p>
+              <div class="track-list" id="track-list"></div>
             </div>
-          </section>
+          </details>
 
-          <section class="panel" aria-labelledby="admin-title">
-            <h3 id="admin-title">Admin Flow</h3>
-            <p>Fast MVP upload writes directly to SB Storage and triggers the deployed processing function.</p>
-            <div class="controls">
-              <label>
-                Title
-                <input class="input" id="upload-title" type="text" placeholder="Calm study">
-              </label>
-              <label>
-                Artist
-                <input class="input" id="upload-artist" type="text" placeholder="Optional">
-              </label>
-              <label>
-                Audio file
-                <input class="file" id="upload-file" type="file" accept="audio/mpeg,audio/wav,audio/mp3,.mp3,.wav">
-              </label>
-              <button class="button primary" id="upload-process" type="button">Upload and Process</button>
-              <p class="status-note" id="admin-status">Waiting for audio.</p>
+          <details class="panel">
+            <summary>SB Catalog</summary>
+            <div class="panel-body">
+              <p>Paste the public anon key once. It is saved only in this browser.</p>
+              <div class="controls">
+                <label>
+                  Project URL
+                  <input class="input" id="sb-url" type="url" value="https://veanlffmjvmuqbugsipm.supabase.co">
+                </label>
+                <label>
+                  Anon key
+                  <input class="input" id="sb-key" type="password" placeholder="eyJhbGciOi...">
+                </label>
+                <button class="button primary" id="load-sb" type="button">Load Ready Tracks</button>
+                <p class="status-note" id="catalog-status">Waiting for catalog.</p>
+              </div>
             </div>
-          </section>
+          </details>
 
-          <section class="panel" aria-labelledby="contract-title">
-            <h3 id="contract-title">Contract</h3>
-            <ul class="contract">
-              <li><span>Storage</span><strong>music-assets</strong></li>
-              <li><span>Table</span><strong>tracks</strong></li>
-              <li><span>Status</span><strong id="status">loading</strong></li>
-              <li><span>Source</span><strong id="source">sample</strong></li>
-              <li><span>Events</span><strong id="event-count">0</strong></li>
-            </ul>
-          </section>
+          <details class="panel">
+            <summary>Local Playback Test</summary>
+            <div class="panel-body">
+              <p>Choose any local `.mp3` or `.wav` to test synchronized browser playback. The file stays on this device.</p>
+              <div class="controls">
+                <input class="file" id="audio-file" type="file" accept="audio/mpeg,audio/wav,audio/mp3,.mp3,.wav">
+              </div>
+            </div>
+          </details>
+
+          <details class="panel">
+            <summary>Admin Upload</summary>
+            <div class="panel-body">
+              <p>Fast MVP upload writes directly to SB Storage and triggers the deployed processing function.</p>
+              <div class="controls">
+                <label>
+                  Title
+                  <input class="input" id="upload-title" type="text" placeholder="Calm study">
+                </label>
+                <label>
+                  Artist
+                  <input class="input" id="upload-artist" type="text" placeholder="Optional">
+                </label>
+                <label>
+                  Audio file
+                  <input class="file" id="upload-file" type="file" accept="audio/mpeg,audio/wav,audio/mp3,.mp3,.wav">
+                </label>
+                <button class="button primary" id="upload-process" type="button">Upload and Process</button>
+                <p class="status-note" id="admin-status">Waiting for audio.</p>
+              </div>
+            </div>
+          </details>
+
+          <details class="panel">
+            <summary>Contract</summary>
+            <div class="panel-body">
+              <ul class="contract">
+                <li><span>Storage</span><strong>music-assets</strong></li>
+                <li><span>Table</span><strong>tracks</strong></li>
+                <li><span>Status</span><strong id="status">loading</strong></li>
+                <li><span>Source</span><strong id="source">sample</strong></li>
+                <li><span>Events</span><strong id="event-count">0</strong></li>
+              </ul>
+            </div>
+          </details>
         </aside>
 
         <section class="stage" aria-label="Music reactive visualizer">
           <canvas id="visualizer"></canvas>
           <div class="stage-ui">
-            <div class="hero-copy">
-              <p class="eyebrow">Published MVP Surface</p>
-              <h2>Calm rhythm, visible timing.</h2>
-              <p>
-                The prototype renders descending hit nodes and soft field pulses from the same `level_map` contract the SB pipeline will write.
-              </p>
-            </div>
-
-            <div class="readout" aria-label="Playback metrics">
-              <div class="metric"><span>Time</span><strong id="time">0 ms</strong></div>
-              <div class="metric"><span>BPM</span><strong id="bpm">--</strong></div>
-              <div class="metric"><span>Theme</span><strong id="theme">--</strong></div>
-              <div class="metric"><span>Action</span><strong id="action">idle</strong></div>
+            <div class="player-bar" aria-label="Playback controls">
+              <button class="button primary play-toggle" id="play-toggle" type="button" disabled>Play</button>
+              <div class="track-now">
+                <strong id="now-title">No track loaded</strong>
+                <span id="now-meta">0 ms</span>
+                <div class="timeline" aria-hidden="true"><span id="progress"></span></div>
+              </div>
             </div>
           </div>
         </section>
@@ -515,13 +631,10 @@
       const ctx = canvas.getContext("2d");
       const audio = document.getElementById("audio");
       const audioFile = document.getElementById("audio-file");
-      const playButton = document.getElementById("play");
-      const pauseButton = document.getElementById("pause");
+      const playToggleButton = document.getElementById("play-toggle");
       const progress = document.getElementById("progress");
-      const timeLabel = document.getElementById("time");
-      const bpmLabel = document.getElementById("bpm");
-      const themeLabel = document.getElementById("theme");
-      const actionLabel = document.getElementById("action");
+      const nowTitle = document.getElementById("now-title");
+      const nowMeta = document.getElementById("now-meta");
       const statusLabel = document.getElementById("status");
       const sourceLabel = document.getElementById("source");
       const eventCountLabel = document.getElementById("event-count");
@@ -535,6 +648,9 @@
       const uploadFileInput = document.getElementById("upload-file");
       const uploadProcessButton = document.getElementById("upload-process");
       const adminStatus = document.getElementById("admin-status");
+      const drawerOpenButton = document.getElementById("drawer-open");
+      const drawerCloseButton = document.getElementById("drawer-close");
+      const drawerBackdrop = document.getElementById("drawer-backdrop");
 
       const storage = {
         url: "music-flow-sb-url",
@@ -569,6 +685,7 @@
         state.pausedAt = 0;
         state.startedAt = performance.now();
         state.lastAction = "idle";
+        progress.style.width = "0%";
       }
 
       function selectTrack(track) {
@@ -580,15 +697,19 @@
 
         if (track.audio_url) {
           audio.src = track.audio_url;
-          playButton.disabled = false;
-          pauseButton.disabled = false;
+          playToggleButton.disabled = false;
+        } else {
+          audio.removeAttribute("src");
+          audio.load();
+          playToggleButton.disabled = true;
         }
+        playToggleButton.textContent = "Play";
 
         statusLabel.textContent = track.processing_status || "ready";
         sourceLabel.textContent = track.source || "sb";
         eventCountLabel.textContent = String(state.map.events.length);
-        bpmLabel.textContent = String(state.map.bpm);
-        themeLabel.textContent = state.map.theme;
+        nowTitle.textContent = track.title || "Untitled Track";
+        nowMeta.textContent = `${state.map.bpm} BPM - ${state.map.theme}`;
         renderTrackList();
       }
 
@@ -699,10 +820,7 @@
         drawLanes(width, height);
         drawNodes(width, height, ms);
 
-        timeLabel.textContent = `${ms} ms`;
-        bpmLabel.textContent = String(state.map.bpm);
-        themeLabel.textContent = state.map.theme;
-        actionLabel.textContent = state.lastAction;
+        nowMeta.textContent = `${formatTime(ms)} / ${formatTime(duration)} - ${state.map.bpm} BPM`;
         progress.style.width = `${Math.min(100, (ms / duration) * 100)}%`;
 
         if (state.isPlaying && ms >= duration) {
@@ -711,6 +829,7 @@
           if (!audio.paused) audio.pause();
           audio.currentTime = 0;
           resetTimeline();
+          playToggleButton.textContent = "Play";
         }
 
         requestAnimationFrame(draw);
@@ -873,6 +992,14 @@
             color: "#edcb7e"
           });
         }
+      }
+
+      function formatTime(ms) {
+        if (!Number.isFinite(ms)) return "0:00";
+        const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = String(totalSeconds % 60).padStart(2, "0");
+        return `${minutes}:${seconds}`;
       }
 
       async function loadMap() {
@@ -1192,8 +1319,8 @@
         const file = audioFile.files && audioFile.files[0];
         if (!file) return;
         audio.src = URL.createObjectURL(file);
-        playButton.disabled = false;
-        pauseButton.disabled = false;
+        playToggleButton.disabled = false;
+        nowTitle.textContent = file.name;
         resetTimeline();
       });
 
@@ -1216,18 +1343,21 @@
         }
       });
 
-      playButton.addEventListener("click", async () => {
+      playToggleButton.addEventListener("click", async () => {
+        if (state.isPlaying) {
+          state.pausedAt = playbackMs(performance.now());
+          state.isPlaying = false;
+          audio.pause();
+          playToggleButton.textContent = "Play";
+          return;
+        }
+
         state.isPlaying = true;
         state.startedAt = performance.now();
+        playToggleButton.textContent = "Pause";
         if (audio.src) {
           await audio.play();
         }
-      });
-
-      pauseButton.addEventListener("click", () => {
-        state.pausedAt = playbackMs(performance.now());
-        state.isPlaying = false;
-        audio.pause();
       });
 
       canvas.addEventListener("pointerdown", (event) => {
@@ -1241,6 +1371,15 @@
       });
 
       window.addEventListener("resize", resize);
+      drawerOpenButton.addEventListener("click", () => {
+        document.body.classList.add("drawer-open");
+      });
+      drawerCloseButton.addEventListener("click", () => {
+        document.body.classList.remove("drawer-open");
+      });
+      drawerBackdrop.addEventListener("click", () => {
+        document.body.classList.remove("drawer-open");
+      });
       resize();
       loadMap().then(() => requestAnimationFrame(draw));
     </script>
