@@ -3,6 +3,16 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 type ProcessTrackRequest = {
   track_id?: string;
   storage_path?: string;
+  analysis?: AudioAnalysis;
+};
+
+type AudioAnalysis = {
+  bpm?: number;
+  duration_ms?: number;
+  onsets?: Array<{
+    time_ms: number;
+    intensity?: number;
+  }>;
 };
 
 type LevelMapEvent = {
@@ -79,11 +89,12 @@ Deno.serve(async (request) => {
 
   try {
     const storagePath = payload.storage_path ?? track.storage_path;
-    const levelMap = buildPlaceholderLevelMap({
+    const levelMap = buildLevelMap({
       title: track.title,
-      bpm: track.bpm ?? 72,
-      durationMs: track.duration_ms ?? 64000,
+      bpm: clampBpm(payload.analysis?.bpm ?? track.bpm ?? 72),
+      durationMs: clampDuration(payload.analysis?.duration_ms ?? track.duration_ms ?? 64000),
       storagePath,
+      onsets: normalizeOnsets(payload.analysis?.onsets),
     });
 
     validateLevelMap(levelMap);
@@ -119,41 +130,47 @@ Deno.serve(async (request) => {
   }
 });
 
-function buildPlaceholderLevelMap(input: {
+function buildLevelMap(input: {
   title: string;
   bpm: number;
   durationMs: number;
   storagePath: string;
+  onsets: Array<{ time_ms: number; intensity: number }>;
 }): LevelMap {
   const beatMs = Math.round(60000 / input.bpm);
   const colors = ["#66d8cb", "#edcb7e", "#b99cff", "#e58ba8"];
   const events: LevelMapEvent[] = [];
+  const onsetEvents = input.onsets.length > 0
+    ? input.onsets
+    : fallbackOnsets(input.durationMs, beatMs);
 
-  for (let time = beatMs; time < input.durationMs; time += beatMs * 2) {
-    const index = events.length;
+  for (let index = 0; index < onsetEvents.length; index += 1) {
+    const onset = onsetEvents[index];
+    if (onset.time_ms >= input.durationMs) continue;
+
     if (index % 8 === 0) {
       events.push({
-        time_ms: time,
+        time_ms: Math.max(0, onset.time_ms - Math.round(beatMs * 0.25)),
         action: "pulse_field",
-        intensity: 0.45 + (index % 4) * 0.08,
+        intensity: clampIntensity(0.35 + onset.intensity * 0.45),
         color: colors[index % colors.length],
       });
     }
 
-    if (index % 16 === 7) {
+    if (index % 16 === 8) {
       events.push({
-        time_ms: time + Math.round(beatMs * 0.5),
+        time_ms: onset.time_ms,
         action: "shift_visual_state",
         target_color: colors[(index + 1) % colors.length],
-        intensity: 0.4,
+        intensity: clampIntensity(0.35 + onset.intensity * 0.25),
       });
     }
 
     events.push({
-      time_ms: time + Math.round(beatMs * 0.9),
+      time_ms: onset.time_ms,
       action: "spawn_node",
       lane: index % 4,
-      intensity: 0.42 + (index % 5) * 0.08,
+      intensity: clampIntensity(0.35 + onset.intensity * 0.55),
       color: colors[index % colors.length],
     });
   }
@@ -165,6 +182,41 @@ function buildPlaceholderLevelMap(input: {
     duration_ms: input.durationMs,
     events: events.sort((a, b) => a.time_ms - b.time_ms),
   };
+}
+
+function fallbackOnsets(durationMs: number, beatMs: number) {
+  const onsets: Array<{ time_ms: number; intensity: number }> = [];
+  for (let time = beatMs; time < durationMs; time += beatMs * 2) {
+    onsets.push({ time_ms: time + Math.round(beatMs * 0.9), intensity: 0.55 });
+  }
+  return onsets;
+}
+
+function normalizeOnsets(onsets: AudioAnalysis["onsets"]) {
+  if (!Array.isArray(onsets)) return [];
+  return onsets
+    .map((onset) => ({
+      time_ms: Math.round(Number(onset.time_ms)),
+      intensity: clampIntensity(Number(onset.intensity ?? 0.5)),
+    }))
+    .filter((onset) => Number.isFinite(onset.time_ms) && onset.time_ms >= 0)
+    .sort((a, b) => a.time_ms - b.time_ms)
+    .slice(0, 240);
+}
+
+function clampBpm(value: number) {
+  if (!Number.isFinite(value)) return 72;
+  return Math.max(30, Math.min(220, Math.round(value)));
+}
+
+function clampDuration(value: number) {
+  if (!Number.isFinite(value)) return 64000;
+  return Math.max(1000, Math.min(60 * 60 * 1000, Math.round(value)));
+}
+
+function clampIntensity(value: number) {
+  if (!Number.isFinite(value)) return 0.5;
+  return Math.max(0.1, Math.min(1, value));
 }
 
 function validateLevelMap(levelMap: LevelMap) {

@@ -10,7 +10,7 @@ Throughout this project, **SB means Supabase**.
 
 ## Current Phase
 
-**Phase 2 is in progress:** the static GitHub Pages prototype can fetch ready tracks from SB, upload audio to Storage, invoke the processing function, and fall back to the local sample map. Flutter remains the planned app shell, but the current static prototype proves the hosted data loop first.
+**Phase 2 is in progress:** the static GitHub Pages prototype can fetch ready tracks from SB, upload audio to Storage, extract lightweight timing features in the browser, invoke the processing function, and fall back to the local sample map. Flutter remains the planned app shell, but the current static prototype proves the hosted data loop first.
 
 ### Phase Plan
 
@@ -43,7 +43,7 @@ Throughout this project, **SB means Supabase**.
 
 - Uploading a valid `.mp3` or `.wav` stores the file in the SB `music-assets` bucket.
 - Uploading creates or updates a row in `public.tracks` with `processing_status = 'uploaded'` or `processing`.
-- Processing extracts timing features, asks Gemini Flash for calm choreography, validates JSON, and stores `level_map`.
+- Processing extracts timing features, validates JSON, and stores `level_map`. Gemini Flash choreography remains planned for the full synthesis phase.
 - Ready tracks are publicly readable by the frontend.
 - The published page lists ready tracks, plays audio, and renders visuals synchronized to `level_map.events[*].time_ms`.
 - GitHub Actions deploys the MVP page from `main` to GitHub Pages.
@@ -138,7 +138,7 @@ The current migration intentionally disables RLS on `tracks` and grants broad ac
 }
 ```
 
-For Phase 1, it validates the request, marks the track as `processing`, builds a deterministic placeholder `level_map`, and marks the track `ready`. Phase 4 will replace the placeholder analysis with Essentia.js WASM and Gemini Flash choreography while preserving the same database contract.
+For Phase 2, it validates the request, marks the track as `processing`, accepts browser-derived BPM/duration/onset hints when available, builds a deterministic `level_map`, and marks the track `ready`. Phase 4 will replace the lightweight browser analysis with Essentia.js WASM and Gemini Flash choreography while preserving the same database contract.
 
 ## Static Prototype
 
@@ -149,6 +149,7 @@ The current `index.html` is the GitHub Pages prototype. It:
 - Falls back to `data/sample-level-map.json`.
 - Lets testers choose a local audio file for browser-only playback.
 - Uploads `.mp3` or `.wav` files to the `music-assets` bucket in fast MVP mode.
+- Estimates duration, BPM, and onset peaks locally with the Web Audio API before upload processing.
 - Creates a matching `tracks` row and invokes the deployed `process-track` Edge Function.
 - Renders descending nodes and calm canvas pulses against the loaded timeline.
 

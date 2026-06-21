@@ -985,6 +985,9 @@
         const storageUrl = `${baseUrl}/storage/v1/object/${bucketName}/${encodedPath}`;
         const publicAudioUrl = `${baseUrl}/storage/v1/object/public/${bucketName}/${encodedPath}`;
 
+        adminStatus.textContent = "Analyzing local audio timing...";
+        const analysis = await analyzeAudioFile(file);
+
         adminStatus.textContent = "Uploading audio to SB Storage...";
         const uploadResponse = await fetch(storageUrl, {
           method: "POST",
@@ -1015,6 +1018,8 @@
             artist: artist || null,
             storage_path: storagePath,
             audio_url: publicAudioUrl,
+            bpm: analysis.bpm,
+            duration_ms: analysis.duration_ms,
             processing_status: "uploaded",
             is_published: false
           })
@@ -1038,7 +1043,7 @@
             Authorization: `Bearer ${anonKey}`,
             "Content-Type": "application/json"
           },
-          body: JSON.stringify({ track_id: track.id, storage_path: storagePath })
+          body: JSON.stringify({ track_id: track.id, storage_path: storagePath, analysis })
         });
 
         if (!processResponse.ok) {
@@ -1061,6 +1066,111 @@
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/^-+|-+$/g, "")
           .slice(0, 48) || "track";
+      }
+
+      async function analyzeAudioFile(file) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) {
+          return { bpm: 72, duration_ms: 64000, onsets: [] };
+        }
+
+        const arrayBuffer = await file.arrayBuffer();
+        const audioContext = new AudioContextClass();
+        try {
+          const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+          const channelData = audioBuffer.getChannelData(0);
+          const sampleRate = audioBuffer.sampleRate;
+          const frameSize = 2048;
+          const hopSize = 1024;
+          const envelope = [];
+
+          for (let start = 0; start < channelData.length - frameSize; start += hopSize) {
+            let sum = 0;
+            for (let index = 0; index < frameSize; index += 1) {
+              const sample = channelData[start + index];
+              sum += sample * sample;
+            }
+            envelope.push(Math.sqrt(sum / frameSize));
+          }
+
+          const smoothed = smoothEnvelope(envelope, 4);
+          const flux = [];
+          for (let index = 1; index < smoothed.length; index += 1) {
+            flux.push(Math.max(0, smoothed[index] - smoothed[index - 1]));
+          }
+
+          const durationMs = Math.round(audioBuffer.duration * 1000);
+          const bpm = estimateBpm(flux, sampleRate, hopSize);
+          const onsets = pickOnsets(flux, sampleRate, hopSize, durationMs);
+          return { bpm, duration_ms: durationMs, onsets };
+        } finally {
+          if (audioContext.close) {
+            audioContext.close();
+          }
+        }
+      }
+
+      function smoothEnvelope(values, radius) {
+        return values.map((_, index) => {
+          let sum = 0;
+          let count = 0;
+          for (let offset = -radius; offset <= radius; offset += 1) {
+            const value = values[index + offset];
+            if (value === undefined) continue;
+            sum += value;
+            count += 1;
+          }
+          return count > 0 ? sum / count : 0;
+        });
+      }
+
+      function estimateBpm(flux, sampleRate, hopSize) {
+        if (flux.length < 16) return 72;
+        const frameMs = (hopSize / sampleRate) * 1000;
+        let bestBpm = 72;
+        let bestScore = -Infinity;
+
+        for (let bpm = 50; bpm <= 150; bpm += 1) {
+          const lag = Math.round((60000 / bpm) / frameMs);
+          if (lag < 2 || lag >= flux.length) continue;
+          let score = 0;
+          for (let index = lag; index < flux.length; index += 1) {
+            score += flux[index] * flux[index - lag];
+          }
+          if (score > bestScore) {
+            bestScore = score;
+            bestBpm = bpm;
+          }
+        }
+
+        return bestBpm;
+      }
+
+      function pickOnsets(flux, sampleRate, hopSize, durationMs) {
+        if (flux.length === 0) return [];
+        const sorted = [...flux].sort((a, b) => a - b);
+        const threshold = sorted[Math.floor(sorted.length * 0.82)] || 0;
+        const maxFlux = sorted[sorted.length - 1] || 1;
+        const frameMs = (hopSize / sampleRate) * 1000;
+        const onsets = [];
+        let lastMs = -600;
+
+        for (let index = 1; index < flux.length - 1; index += 1) {
+          const value = flux[index];
+          const timeMs = Math.round(index * frameMs);
+          const isPeak = value > threshold && value >= flux[index - 1] && value >= flux[index + 1];
+          if (!isPeak || timeMs - lastMs < 420 || timeMs > durationMs - 250) continue;
+
+          onsets.push({
+            time_ms: timeMs,
+            intensity: Math.max(0.2, Math.min(1, value / maxFlux))
+          });
+          lastMs = timeMs;
+
+          if (onsets.length >= 180) break;
+        }
+
+        return onsets;
       }
 
       function fallbackMap() {
