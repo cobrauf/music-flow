@@ -42,6 +42,14 @@
         font: inherit;
       }
 
+      label {
+        display: grid;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 0.82rem;
+        font-weight: 700;
+      }
+
       .app {
         min-height: 100vh;
         display: grid;
@@ -292,6 +300,26 @@
         background: rgba(255, 255, 255, 0.06);
       }
 
+      .input {
+        width: 100%;
+        min-height: 40px;
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        color: var(--ink);
+        background: rgba(255, 255, 255, 0.06);
+      }
+
+      .input::placeholder {
+        color: rgba(170, 192, 188, 0.66);
+      }
+
+      .status-note {
+        min-height: 20px;
+        color: var(--muted);
+        font-size: 0.84rem;
+      }
+
       .timeline {
         height: 8px;
         overflow: hidden;
@@ -377,12 +405,24 @@
         <aside>
           <section class="panel" aria-labelledby="catalog-title">
             <h3 id="catalog-title">Ready Tracks</h3>
-            <p>Phase 1 loads a local sample map. Phase 2 will replace this list with ready rows from SB.</p>
-            <div class="track-list">
-              <button class="track" type="button" aria-selected="true">
-                <strong>Aurora Timing Study</strong>
-                <span>Sample level_map - 72 BPM - aurora_ripple</span>
-              </button>
+            <p>Fetches published `ready_tracks` from SB, with the local sample map as backup.</p>
+            <div class="track-list" id="track-list"></div>
+          </section>
+
+          <section class="panel" aria-labelledby="sb-title">
+            <h3 id="sb-title">SB Catalog</h3>
+            <p>Paste the public anon key once. It is saved only in this browser.</p>
+            <div class="controls">
+              <label>
+                Project URL
+                <input class="input" id="sb-url" type="url" value="https://veanlffmjvmuqbugsipm.supabase.co">
+              </label>
+              <label>
+                Anon key
+                <input class="input" id="sb-key" type="password" placeholder="eyJhbGciOi...">
+              </label>
+              <button class="button primary" id="load-sb" type="button">Load Ready Tracks</button>
+              <p class="status-note" id="catalog-status">Waiting for catalog.</p>
             </div>
           </section>
 
@@ -412,6 +452,7 @@
               <li><span>Storage</span><strong>music-assets</strong></li>
               <li><span>Table</span><strong>tracks</strong></li>
               <li><span>Status</span><strong id="status">loading</strong></li>
+              <li><span>Source</span><strong id="source">sample</strong></li>
               <li><span>Events</span><strong id="event-count">0</strong></li>
             </ul>
           </section>
@@ -444,6 +485,8 @@
     <script>
       const state = {
         map: { theme: "loading", bpm: 72, duration_ms: 64000, events: [] },
+        tracks: [],
+        selectedTrackId: "sample",
         nodes: [],
         pulses: [],
         nextEventIndex: 0,
@@ -466,7 +509,18 @@
       const themeLabel = document.getElementById("theme");
       const actionLabel = document.getElementById("action");
       const statusLabel = document.getElementById("status");
+      const sourceLabel = document.getElementById("source");
       const eventCountLabel = document.getElementById("event-count");
+      const trackList = document.getElementById("track-list");
+      const catalogStatus = document.getElementById("catalog-status");
+      const sbUrlInput = document.getElementById("sb-url");
+      const sbKeyInput = document.getElementById("sb-key");
+      const loadSbButton = document.getElementById("load-sb");
+
+      const storage = {
+        url: "music-flow-sb-url",
+        key: "music-flow-sb-anon-key"
+      };
 
       function resize() {
         const ratio = window.devicePixelRatio || 1;
@@ -494,6 +548,65 @@
         state.pausedAt = 0;
         state.startedAt = performance.now();
         state.lastAction = "idle";
+      }
+
+      function selectTrack(track) {
+        const map = normalizeLevelMap(track.level_map || fallbackMap());
+        state.selectedTrackId = track.id;
+        state.map = map;
+        state.hue = { r: 102, g: 216, b: 203 };
+        resetTimeline();
+
+        if (track.audio_url) {
+          audio.src = track.audio_url;
+          playButton.disabled = false;
+          pauseButton.disabled = false;
+        }
+
+        statusLabel.textContent = track.processing_status || "ready";
+        sourceLabel.textContent = track.source || "sb";
+        eventCountLabel.textContent = String(state.map.events.length);
+        bpmLabel.textContent = String(state.map.bpm);
+        themeLabel.textContent = state.map.theme;
+        renderTrackList();
+      }
+
+      function normalizeLevelMap(map) {
+        const normalized = {
+          schema_version: map.schema_version || 1,
+          theme: map.theme || "aurora_ripple",
+          bpm: Number(map.bpm || 72),
+          duration_ms: Number(map.duration_ms || 64000),
+          events: Array.isArray(map.events) ? [...map.events] : []
+        };
+        normalized.events.sort((a, b) => Number(a.time_ms || 0) - Number(b.time_ms || 0));
+        return normalized;
+      }
+
+      function renderTrackList() {
+        trackList.innerHTML = "";
+        for (const track of state.tracks) {
+          const button = document.createElement("button");
+          button.className = "track";
+          button.type = "button";
+          button.setAttribute("aria-selected", String(track.id === state.selectedTrackId));
+          button.innerHTML = `
+            <strong>${escapeHtml(track.title || "Untitled Track")}</strong>
+            <span>${escapeHtml(track.artist || track.source || "SB")} - ${track.bpm || 72} BPM - ${escapeHtml((track.level_map && track.level_map.theme) || "aurora_ripple")}</span>
+          `;
+          button.addEventListener("click", () => selectTrack(track));
+          trackList.appendChild(button);
+        }
+      }
+
+      function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, (char) => ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          "\"": "&quot;",
+          "'": "&#039;"
+        }[char]));
       }
 
       function handleEvent(event) {
@@ -660,19 +773,89 @@
       }
 
       async function loadMap() {
-        try {
-          const response = await fetch("data/sample-level-map.json");
-          state.map = await response.json();
-          state.map.events.sort((a, b) => a.time_ms - b.time_ms);
-          statusLabel.textContent = "ready";
-        } catch (error) {
-          statusLabel.textContent = "offline";
-          state.map = fallbackMap();
+        loadSavedSbConfig();
+
+        if (sbKeyInput.value.trim()) {
+          try {
+            await loadSupabaseTracks();
+            return;
+          } catch (error) {
+            catalogStatus.textContent = `SB fetch failed. Using sample map.`;
+          }
         }
 
-        eventCountLabel.textContent = String(state.map.events.length);
-        bpmLabel.textContent = String(state.map.bpm);
-        themeLabel.textContent = state.map.theme;
+        try {
+          const response = await fetch("data/sample-level-map.json");
+          const sampleMap = normalizeLevelMap(await response.json());
+          state.tracks = [{
+            id: "sample",
+            title: "Aurora Timing Study",
+            artist: "Local sample",
+            bpm: sampleMap.bpm,
+            level_map: sampleMap,
+            processing_status: "ready",
+            source: "sample"
+          }];
+          selectTrack(state.tracks[0]);
+          catalogStatus.textContent = "Loaded local sample map.";
+        } catch (error) {
+          statusLabel.textContent = "offline";
+          const map = fallbackMap();
+          state.tracks = [{
+            id: "fallback",
+            title: "Fallback Timing Study",
+            artist: "Generated fallback",
+            bpm: map.bpm,
+            level_map: map,
+            processing_status: "offline",
+            source: "fallback"
+          }];
+          selectTrack(state.tracks[0]);
+          catalogStatus.textContent = "Using generated fallback map.";
+        }
+      }
+
+      function loadSavedSbConfig() {
+        sbUrlInput.value = localStorage.getItem(storage.url) || sbUrlInput.value;
+        sbKeyInput.value = localStorage.getItem(storage.key) || "";
+      }
+
+      function saveSbConfig() {
+        localStorage.setItem(storage.url, sbUrlInput.value.trim());
+        localStorage.setItem(storage.key, sbKeyInput.value.trim());
+      }
+
+      async function loadSupabaseTracks() {
+        saveSbConfig();
+        const baseUrl = sbUrlInput.value.trim().replace(/\/$/, "");
+        const anonKey = sbKeyInput.value.trim();
+        const endpoint = `${baseUrl}/rest/v1/ready_tracks?select=id,title,artist,audio_url,bpm,duration_ms,level_map,created_at&order=created_at.desc`;
+
+        catalogStatus.textContent = "Loading SB ready_tracks...";
+        const response = await fetch(endpoint, {
+          headers: {
+            apikey: anonKey,
+            Authorization: `Bearer ${anonKey}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`SB returned ${response.status}`);
+        }
+
+        const rows = await response.json();
+        if (!Array.isArray(rows) || rows.length === 0) {
+          throw new Error("No ready tracks found");
+        }
+
+        state.tracks = rows.map((row) => ({
+          ...row,
+          bpm: row.bpm || (row.level_map && row.level_map.bpm) || 72,
+          processing_status: "ready",
+          source: "sb"
+        }));
+        selectTrack(state.tracks[0]);
+        catalogStatus.textContent = `Loaded ${state.tracks.length} ready track${state.tracks.length === 1 ? "" : "s"} from SB.`;
       }
 
       function fallbackMap() {
@@ -697,6 +880,14 @@
         playButton.disabled = false;
         pauseButton.disabled = false;
         resetTimeline();
+      });
+
+      loadSbButton.addEventListener("click", async () => {
+        try {
+          await loadSupabaseTracks();
+        } catch (error) {
+          catalogStatus.textContent = error instanceof Error ? error.message : "Unable to load SB catalog.";
+        }
       });
 
       playButton.addEventListener("click", async () => {

@@ -10,14 +10,14 @@ Throughout this project, **SB means Supabase**.
 
 ## Current Phase
 
-**Phase 1 is in progress:** keep the static GitHub Pages prototype live while adding the SB data contract, migration, and Edge Function scaffold. This gives the project a concrete surface before Flutter, hosted SB credentials, and Gemini secrets are wired in.
+**Phase 2 is in progress:** the static GitHub Pages prototype can now fetch ready tracks from SB while keeping the local sample map as a fallback. Flutter remains the planned app shell, but the current static prototype proves the hosted data loop first.
 
 ### Phase Plan
 
 | Phase | Goal | Status |
 | --- | --- | --- |
-| 1 | Static prototype, `level_map` contract, SB schema, deployment docs | In progress |
-| 2 | Flutter web app foundation with catalog/player routes | Planned |
+| 1 | Static prototype, `level_map` contract, SB schema, deployment docs | Done |
+| 2 | SB-backed static catalog/player, then Flutter web app foundation | In progress |
 | 3 | Admin upload flow using `supabase_flutter` and SB Storage | Planned |
 | 4 | SB Edge Function synthesis pipeline with Essentia.js and Gemini Flash | Planned |
 | 5 | GitHub Actions Flutter web build and Pages deployment | Planned |
@@ -27,16 +27,16 @@ Throughout this project, **SB means Supabase**.
 
 ```text
 .
-├── index.html
-├── data/
-│   └── sample-level-map.json
-├── supabase/
-│   ├── migrations/
-│   │   └── 202606210001_music_flow_foundation.sql
-│   └── functions/
-│       └── process-track/
-│           └── index.ts
-└── .github/workflows/pages.yml
++-- index.html
++-- data/
+|   +-- sample-level-map.json
++-- supabase/
+|   +-- migrations/
+|   |   +-- 202606210001_music_flow_foundation.sql
+|   +-- functions/
+|       +-- process-track/
+|           +-- index.ts
++-- .github/workflows/pages.yml
 ```
 
 ## MVP Acceptance Criteria
@@ -123,7 +123,9 @@ The initial migration creates:
 - `track_processing_status` enum.
 - `public.tracks` table.
 - `public.ready_tracks` view.
-- RLS policies for public ready-track reads and service-role writes.
+- Fast/open MVP access so the prototype can move quickly.
+
+The current migration intentionally disables RLS on `tracks` and grants broad access for the MVP. Tighten this before inviting untrusted users or shipping anything beyond prototype scope.
 
 ## Edge Function
 
@@ -142,12 +144,22 @@ For Phase 1, it validates the request, marks the track as `processing`, builds a
 
 The current `index.html` is the GitHub Pages prototype. It:
 
-- Loads `data/sample-level-map.json`.
+- Fetches `ready_tracks` from the linked SB project when a public anon key is provided.
+- Saves the SB URL and anon key in browser local storage only.
+- Falls back to `data/sample-level-map.json`.
 - Lets testers choose a local audio file for browser-only playback.
 - Renders descending nodes and calm canvas pulses against the loaded timeline.
 - Shows the admin upload/process flow as disabled placeholders until Phase 3.
 
 Open `index.html` directly or use the deployed GitHub Pages URL.
+
+To connect the prototype to SB:
+
+1. Open the page.
+2. Paste the public anon key from `Project Settings -> API Keys`.
+3. Click `Load Ready Tracks`.
+
+The anon key is expected to be public frontend configuration. Never paste or commit the service-role key into frontend code.
 
 ## GitHub Pages Publishing
 
@@ -162,8 +174,8 @@ To finish setup in GitHub:
 
 ## Next Implementation Steps
 
-1. Create the Flutter app scaffold in this repo without breaking the current Pages prototype.
-2. Add `supabase_flutter`, `just_audio`, and the first catalog/player screens.
-3. Move the static sample playback logic into Flutter models and rendering code.
-4. Build authenticated admin upload against SB Storage and `tracks`.
+1. Add a simple static admin upload/process panel against SB Storage and the `process-track` function.
+2. Create the Flutter app scaffold in this repo without breaking the current Pages prototype.
+3. Add `supabase_flutter`, `just_audio`, and the first catalog/player screens.
+4. Move the static sample playback logic into Flutter models and rendering code.
 5. Replace placeholder Edge Function synthesis with Essentia.js and Gemini Flash.
