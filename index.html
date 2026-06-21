@@ -241,6 +241,7 @@
         align-content: end;
         min-height: 100vh;
         padding: clamp(18px, 4vw, 46px);
+        padding-bottom: calc(clamp(34px, 7vh, 88px) + env(safe-area-inset-bottom, 0px));
         pointer-events: none;
       }
 
@@ -282,6 +283,7 @@
         align-items: center;
         width: min(680px, calc(100vw - 36px));
         margin: 0 auto;
+        margin-bottom: env(safe-area-inset-bottom, 0px);
         padding: 12px;
         border: 1px solid var(--line);
         border-radius: 8px;
@@ -442,6 +444,24 @@
         color: rgba(170, 192, 188, 0.66);
       }
 
+      .slider-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .slider-row span {
+        color: var(--ink);
+        font-size: 0.82rem;
+        font-weight: 800;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        accent-color: var(--aqua);
+      }
+
       .status-note {
         min-height: 20px;
         color: var(--muted);
@@ -547,6 +567,28 @@
           </details>
 
           <details class="panel">
+            <summary>Sound</summary>
+            <div class="panel-body">
+              <div class="controls">
+                <label>
+                  Track volume
+                  <div class="slider-row">
+                    <input id="music-volume" type="range" min="0" max="100" value="85">
+                    <span id="music-volume-value">85%</span>
+                  </div>
+                </label>
+                <label>
+                  Tap sounds
+                  <div class="slider-row">
+                <input id="tap-volume" type="range" min="0" max="100" value="90">
+                <span id="tap-volume-value">90%</span>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </details>
+
+          <details class="panel">
             <summary>Local Playback Test</summary>
             <div class="panel-body">
               <p>Choose any local `.mp3` or `.wav` to test synchronized browser playback. The file stays on this device.</p>
@@ -619,11 +661,14 @@
         nodes: [],
         pulses: [],
         touches: [],
+        tileFlashes: [],
         nextEventIndex: 0,
         startedAt: 0,
         pausedAt: 0,
         isPlaying: false,
         lastAction: "idle",
+        musicVolume: 0.85,
+        tapVolume: 0.9,
         hue: { r: 102, g: 216, b: 203 }
       };
 
@@ -651,18 +696,61 @@
       const drawerOpenButton = document.getElementById("drawer-open");
       const drawerCloseButton = document.getElementById("drawer-close");
       const drawerBackdrop = document.getElementById("drawer-backdrop");
+      const musicVolumeInput = document.getElementById("music-volume");
+      const tapVolumeInput = document.getElementById("tap-volume");
+      const musicVolumeValue = document.getElementById("music-volume-value");
+      const tapVolumeValue = document.getElementById("tap-volume-value");
 
       const storage = {
         url: "music-flow-sb-url",
-        key: "music-flow-sb-anon-key"
+        key: "music-flow-sb-anon-key",
+        musicVolume: "music-flow-music-volume",
+        tapVolume: "music-flow-tap-volume"
       };
       const bucketName = "music-assets";
+      const grid = {
+        cols: 4,
+        rows: 6,
+        topMargin: 0.09,
+        bottomMargin: 0.22
+      };
+      const synth = {
+        context: null,
+        master: null,
+        scale: [0, 2, 4, 7, 9],
+        root: 261.63
+      };
 
       function resize() {
         const ratio = window.devicePixelRatio || 1;
         canvas.width = Math.floor(canvas.clientWidth * ratio);
         canvas.height = Math.floor(canvas.clientHeight * ratio);
         ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      }
+
+      function loadSoundSettings() {
+        state.musicVolume = readStoredVolume(storage.musicVolume, 0.85);
+        state.tapVolume = readStoredVolume(storage.tapVolume, 0.9);
+        musicVolumeInput.value = String(Math.round(state.musicVolume * 100));
+        tapVolumeInput.value = String(Math.round(state.tapVolume * 100));
+        applySoundSettings();
+      }
+
+      function readStoredVolume(key, fallback) {
+        const stored = Number(localStorage.getItem(key));
+        if (!Number.isFinite(stored)) return fallback;
+        return Math.max(0, Math.min(1, stored));
+      }
+
+      function applySoundSettings() {
+        audio.volume = state.musicVolume;
+        musicVolumeValue.textContent = `${Math.round(state.musicVolume * 100)}%`;
+        tapVolumeValue.textContent = `${Math.round(state.tapVolume * 100)}%`;
+        if (synth.master) {
+          synth.master.gain.setTargetAtTime(0.55 * state.tapVolume, synth.context.currentTime, 0.03);
+        }
+        localStorage.setItem(storage.musicVolume, String(state.musicVolume));
+        localStorage.setItem(storage.tapVolume, String(state.tapVolume));
       }
 
       function playbackMs(now) {
@@ -681,6 +769,7 @@
         state.nodes = [];
         state.pulses = [];
         state.touches = [];
+        state.tileFlashes = [];
         state.nextEventIndex = 0;
         state.pausedAt = 0;
         state.startedAt = performance.now();
@@ -796,7 +885,6 @@
         const height = canvas.clientHeight;
         const ms = playbackMs(now);
         const duration = audio.duration > 0 ? audio.duration * 1000 : state.map.duration_ms;
-        const beat = Math.sin((ms / 60000) * state.map.bpm * Math.PI * 2);
 
         while (
           state.nextEventIndex < state.map.events.length &&
@@ -814,10 +902,10 @@
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, width, height);
 
-        drawFluidField(width, height, ms, beat);
+        drawRegionGrid(width, height, now);
         drawPulses(width, height, ms);
         drawTouches(width, height, now);
-        drawLanes(width, height);
+        drawTimingBar(width, height);
         drawNodes(width, height, ms);
 
         nowMeta.textContent = `${formatTime(ms)} / ${formatTime(duration)} - ${state.map.bpm} BPM`;
@@ -835,41 +923,46 @@
         requestAnimationFrame(draw);
       }
 
-      function drawFluidField(width, height, ms, beat) {
-        const rows = 9;
+      function drawTimingBar(width, height) {
+        const bounds = getGridBounds(width, height);
         ctx.lineWidth = 1;
-        for (let row = 0; row < rows; row += 1) {
-          const y = (height / (rows + 1)) * (row + 1);
-          ctx.beginPath();
-          for (let x = -20; x <= width + 20; x += 20) {
-            const wave = Math.sin(x * 0.012 + ms * 0.0012 + row) * (18 + beat * 4);
-            const drift = Math.cos(ms * 0.0007 + row * 0.8) * 16;
-            if (x === -20) {
-              ctx.moveTo(x, y + wave + drift);
-            } else {
-              ctx.lineTo(x, y + wave + drift);
-            }
-          }
-          ctx.strokeStyle = row % 2 === 0 ? "rgba(102, 216, 203, 0.16)" : "rgba(185, 156, 255, 0.12)";
-          ctx.stroke();
-        }
+        ctx.fillStyle = "rgba(237, 203, 126, 0.22)";
+        ctx.fillRect(bounds.left + bounds.tileWidth, bounds.bottom - 8, bounds.tileWidth * 2, 3);
       }
 
-      function drawLanes(width, height) {
-        const laneCount = 4;
-        const laneWidth = Math.min(90, width / 7);
-        const start = width / 2 - (laneWidth * laneCount) / 2;
+      function drawRegionGrid(width, height, now) {
+        const bounds = getGridBounds(width, height);
         ctx.lineWidth = 1;
-        for (let lane = 0; lane <= laneCount; lane += 1) {
-          const x = start + lane * laneWidth;
+
+        for (let col = 0; col <= grid.cols; col += 1) {
+          const x = bounds.left + col * bounds.tileWidth;
           ctx.beginPath();
-          ctx.moveTo(x, height * 0.18);
-          ctx.lineTo(x, height * 0.9);
-          ctx.strokeStyle = "rgba(255, 255, 255, 0.09)";
+          ctx.moveTo(x, bounds.top);
+          ctx.lineTo(x, bounds.bottom);
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.075)";
           ctx.stroke();
         }
-        ctx.fillStyle = "rgba(237, 203, 126, 0.18)";
-        ctx.fillRect(start, height * 0.84, laneWidth * laneCount, 3);
+
+        for (let row = 0; row <= grid.rows; row += 1) {
+          const y = bounds.top + row * bounds.tileHeight;
+          ctx.beginPath();
+          ctx.moveTo(bounds.left, y);
+          ctx.lineTo(bounds.right, y);
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.045)";
+          ctx.stroke();
+        }
+
+        state.tileFlashes = state.tileFlashes.filter((flash) => now - flash.born < 850);
+        for (const flash of state.tileFlashes) {
+          const age = now - flash.born;
+          const t = age / 850;
+          const x = bounds.left + flash.col * bounds.tileWidth;
+          const y = bounds.top + flash.row * bounds.tileHeight;
+          ctx.fillStyle = flash.color;
+          ctx.globalAlpha = (1 - t) * 0.2;
+          ctx.fillRect(x, y, bounds.tileWidth, bounds.tileHeight);
+          ctx.globalAlpha = 1;
+        }
       }
 
       function drawNodes(width, height, ms) {
@@ -939,13 +1032,14 @@
         }
       }
 
-      function interactWithStage(event) {
+      function interactWithStage(event, shouldPlayTone = true) {
         const rect = canvas.getBoundingClientRect();
         const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
         const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
         const now = performance.now();
         const ms = playbackMs(now);
         const color = y > 0.65 ? "#edcb7e" : "#66d8cb";
+        const tile = getTileAt(x, y);
 
         state.touches.push({ x, y, born: now, color });
         state.pulses.push({
@@ -956,8 +1050,102 @@
           color
         });
 
+        if (tile && shouldPlayTone) {
+          state.tileFlashes.push({ ...tile, born: now, color });
+          playTileTone(tile);
+        }
+
         collectNearbyNode(x, y, ms);
         state.lastAction = "touch_ripple";
+      }
+
+      function getGridBounds(width, height) {
+        const top = height * grid.topMargin;
+        const bottom = height * (1 - grid.bottomMargin);
+        return {
+          left: 0,
+          right: width,
+          top,
+          bottom,
+          tileWidth: width / grid.cols,
+          tileHeight: (bottom - top) / grid.rows
+        };
+      }
+
+      function getTileAt(x, y) {
+        if (y < grid.topMargin || y > 1 - grid.bottomMargin) return null;
+        const localY = (y - grid.topMargin) / (1 - grid.topMargin - grid.bottomMargin);
+        const col = Math.max(0, Math.min(grid.cols - 1, Math.floor(x * grid.cols)));
+        const row = Math.max(0, Math.min(grid.rows - 1, Math.floor(localY * grid.rows)));
+        return { col, row, index: row * grid.cols + col };
+      }
+
+      function ensureSynth() {
+        if (synth.context) return synth.context;
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) return null;
+
+        const context = new AudioContextClass();
+        const master = context.createGain();
+
+        master.gain.value = 0.55 * state.tapVolume;
+        master.connect(context.destination);
+
+        synth.context = context;
+        synth.master = master;
+        return context;
+      }
+
+      function playTileTone(tile) {
+        const context = ensureSynth();
+        if (!context) return;
+        if (context.state === "suspended") {
+          context.resume();
+        }
+
+        const now = context.currentTime;
+        const frequency = tileToFrequency(tile);
+        const voice = context.createOscillator();
+        const shimmer = context.createOscillator();
+        const gain = context.createGain();
+        const filter = context.createBiquadFilter();
+        const shimmerGain = context.createGain();
+
+        voice.type = "sine";
+        voice.frequency.setValueAtTime(frequency, now);
+        shimmer.type = "triangle";
+        shimmer.frequency.setValueAtTime(frequency * 2, now);
+
+        filter.type = "lowpass";
+        filter.frequency.setValueAtTime(900 + tile.col * 260 + (grid.rows - tile.row) * 70, now);
+        filter.Q.value = 0.6;
+
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.exponentialRampToValueAtTime(0.18, now + 0.035);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.6);
+
+        shimmerGain.gain.setValueAtTime(0.0001, now);
+        shimmerGain.gain.exponentialRampToValueAtTime(0.035, now + 0.055);
+        shimmerGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.2);
+
+        voice.connect(filter);
+        filter.connect(gain);
+        shimmer.connect(shimmerGain);
+        shimmerGain.connect(gain);
+        gain.connect(synth.master);
+
+        voice.start(now);
+        shimmer.start(now);
+        voice.stop(now + 1.7);
+        shimmer.stop(now + 1.25);
+      }
+
+      function tileToFrequency(tile) {
+        const invertedRow = grid.rows - 1 - tile.row;
+        const scaleIndex = tile.col + invertedRow * 2;
+        const octave = Math.floor(scaleIndex / synth.scale.length);
+        const semitone = synth.scale[scaleIndex % synth.scale.length] + octave * 12;
+        return synth.root * Math.pow(2, semitone / 12);
       }
 
       function collectNearbyNode(x, y, ms) {
@@ -1343,6 +1531,16 @@
         }
       });
 
+      musicVolumeInput.addEventListener("input", () => {
+        state.musicVolume = Number(musicVolumeInput.value) / 100;
+        applySoundSettings();
+      });
+
+      tapVolumeInput.addEventListener("input", () => {
+        state.tapVolume = Number(tapVolumeInput.value) / 100;
+        applySoundSettings();
+      });
+
       playToggleButton.addEventListener("click", async () => {
         if (state.isPlaying) {
           state.pausedAt = playbackMs(performance.now());
@@ -1362,12 +1560,12 @@
 
       canvas.addEventListener("pointerdown", (event) => {
         canvas.setPointerCapture(event.pointerId);
-        interactWithStage(event);
+        interactWithStage(event, true);
       });
 
       canvas.addEventListener("pointermove", (event) => {
         if (event.buttons !== 1 && event.pointerType !== "touch") return;
-        interactWithStage(event);
+        interactWithStage(event, false);
       });
 
       window.addEventListener("resize", resize);
@@ -1380,6 +1578,7 @@
       drawerBackdrop.addEventListener("click", () => {
         document.body.classList.remove("drawer-open");
       });
+      loadSoundSettings();
       resize();
       loadMap().then(() => requestAnimationFrame(draw));
     </script>

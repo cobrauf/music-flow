@@ -151,6 +151,7 @@ The current `index.html` is the GitHub Pages prototype. It:
 - Uploads `.mp3` or `.wav` files to the `music-assets` bucket in fast MVP mode.
 - Estimates duration, BPM, and onset peaks locally with the Web Audio API before upload processing.
 - Creates a matching `tracks` row and invokes the deployed `process-track` Edge Function.
+- Provides a mobile-first 4x6 tappable region grid that plays soft pentatonic Web Audio tones over the track.
 - Renders descending nodes and calm canvas pulses against the loaded timeline.
 
 Open `index.html` directly or use the deployed GitHub Pages URL.
