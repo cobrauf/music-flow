@@ -634,15 +634,22 @@
                 <label>
                   Minimum speed
                   <div class="slider-row">
-                    <input id="trace-min-speed" type="range" min="10" max="300" value="60">
-                    <span id="trace-min-speed-value">60 px/s</span>
+                    <input id="trace-min-speed" type="range" min="1" max="50" value="6">
+                    <span id="trace-min-speed-value">6</span>
                   </div>
                 </label>
                 <label>
                   Maximum speed
                   <div class="slider-row">
-                    <input id="trace-max-speed" type="range" min="250" max="1200" value="650">
-                    <span id="trace-max-speed-value">650 px/s</span>
+                    <input id="trace-max-speed" type="range" min="10" max="100" value="65">
+                    <span id="trace-max-speed-value">65</span>
+                  </div>
+                </label>
+                <label>
+                  Coloring page opacity
+                  <div class="slider-row">
+                    <input id="trace-opacity" type="range" min="10" max="100" value="90">
+                    <span id="trace-opacity-value">90%</span>
                   </div>
                 </label>
                 <p class="status-note" id="trace-status">Upload a pattern.</p>
@@ -735,6 +742,7 @@
           smoothedSpeed: 0,
           minSpeed: 60,
           maxSpeed: 650,
+          opacity: 0.9,
           gate: "idle",
           wasPausedByGate: false,
           resumePromise: null
@@ -775,6 +783,8 @@
       const traceMaxSpeedInput = document.getElementById("trace-max-speed");
       const traceMinSpeedValue = document.getElementById("trace-min-speed-value");
       const traceMaxSpeedValue = document.getElementById("trace-max-speed-value");
+      const traceOpacityInput = document.getElementById("trace-opacity");
+      const traceOpacityValue = document.getElementById("trace-opacity-value");
       const traceStatus = document.getElementById("trace-status");
 
       const storage = {
@@ -1070,11 +1080,15 @@
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, width, height);
 
-        drawRegionGrid(width, height, now);
+        if (!isTracingMode()) {
+          drawRegionGrid(width, height, now);
+        }
         drawPulses(width, height, ms);
         drawTouches(width, height, now);
-        drawTimingBar(width, height);
-        drawNodes(width, height, ms);
+        if (!isTracingMode()) {
+          drawTimingBar(width, height);
+          drawNodes(width, height, ms);
+        }
         drawTraceLayer(width, height, now);
         updateTraceIdleGate(now);
 
@@ -1098,6 +1112,10 @@
         return state.trace.mode === "tracing" && Boolean(state.trace.image);
       }
 
+      function isTracingMode() {
+        return state.trace.mode === "tracing";
+      }
+
       function getTraceBounds(width, height) {
         const sourceWidth = state.trace.image ? state.trace.image.width : 1;
         const sourceHeight = state.trace.image ? state.trace.image.height : 1;
@@ -1119,7 +1137,7 @@
         state.trace.bounds = bounds;
 
         ctx.save();
-        ctx.globalAlpha = 0.9;
+        ctx.globalAlpha = state.trace.opacity;
         ctx.drawImage(state.trace.image, bounds.x, bounds.y, bounds.width, bounds.height);
         ctx.restore();
 
@@ -1933,23 +1951,32 @@
       });
 
       traceMinSpeedInput.addEventListener("input", () => {
-        state.trace.minSpeed = Number(traceMinSpeedInput.value);
+        const minValue = Number(traceMinSpeedInput.value);
+        state.trace.minSpeed = minValue * 10;
         if (state.trace.minSpeed >= state.trace.maxSpeed) {
-          state.trace.maxSpeed = state.trace.minSpeed + 50;
-          traceMaxSpeedInput.value = String(Math.min(Number(traceMaxSpeedInput.max), state.trace.maxSpeed));
+          const nextMaxValue = Math.min(Number(traceMaxSpeedInput.max), minValue + 5);
+          traceMaxSpeedInput.value = String(nextMaxValue);
+          state.trace.maxSpeed = nextMaxValue * 10;
         }
-        traceMinSpeedValue.textContent = `${state.trace.minSpeed} px/s`;
-        traceMaxSpeedValue.textContent = `${state.trace.maxSpeed} px/s`;
+        traceMinSpeedValue.textContent = String(minValue);
+        traceMaxSpeedValue.textContent = traceMaxSpeedInput.value;
       });
 
       traceMaxSpeedInput.addEventListener("input", () => {
-        state.trace.maxSpeed = Number(traceMaxSpeedInput.value);
+        const maxValue = Number(traceMaxSpeedInput.value);
+        state.trace.maxSpeed = maxValue * 10;
         if (state.trace.maxSpeed <= state.trace.minSpeed) {
-          state.trace.minSpeed = state.trace.maxSpeed - 50;
-          traceMinSpeedInput.value = String(Math.max(Number(traceMinSpeedInput.min), state.trace.minSpeed));
+          const nextMinValue = Math.max(Number(traceMinSpeedInput.min), maxValue - 5);
+          traceMinSpeedInput.value = String(nextMinValue);
+          state.trace.minSpeed = nextMinValue * 10;
         }
-        traceMinSpeedValue.textContent = `${state.trace.minSpeed} px/s`;
-        traceMaxSpeedValue.textContent = `${state.trace.maxSpeed} px/s`;
+        traceMinSpeedValue.textContent = traceMinSpeedInput.value;
+        traceMaxSpeedValue.textContent = String(maxValue);
+      });
+
+      traceOpacityInput.addEventListener("input", () => {
+        state.trace.opacity = Number(traceOpacityInput.value) / 100;
+        traceOpacityValue.textContent = `${traceOpacityInput.value}%`;
       });
 
       playToggleButton.addEventListener("click", async () => {
