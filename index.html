@@ -144,6 +144,7 @@
         inset: 0;
         width: 100%;
         height: 100%;
+        touch-action: none;
       }
 
       .stage-ui {
@@ -501,6 +502,7 @@
         selectedTrackId: "sample",
         nodes: [],
         pulses: [],
+        touches: [],
         nextEventIndex: 0,
         startedAt: 0,
         pausedAt: 0,
@@ -562,6 +564,7 @@
       function resetTimeline() {
         state.nodes = [];
         state.pulses = [];
+        state.touches = [];
         state.nextEventIndex = 0;
         state.pausedAt = 0;
         state.startedAt = performance.now();
@@ -642,6 +645,8 @@
         if (event.action === "pulse_field") {
           state.pulses.push({
             born: event.time_ms,
+            x: 0.5,
+            y: 0.48,
             intensity: Number(event.intensity || 0.5),
             color: event.color || "#edcb7e"
           });
@@ -690,6 +695,7 @@
 
         drawFluidField(width, height, ms, beat);
         drawPulses(width, height, ms);
+        drawTouches(width, height, now);
         drawLanes(width, height);
         drawNodes(width, height, ms);
 
@@ -781,12 +787,91 @@
           const age = ms - pulse.born;
           const t = age / 1800;
           ctx.beginPath();
-          ctx.arc(width * 0.5, height * 0.48, 80 + t * Math.max(width, height) * 0.42, 0, Math.PI * 2);
+          ctx.arc((pulse.x || 0.5) * width, (pulse.y || 0.48) * height, 80 + t * Math.max(width, height) * 0.42, 0, Math.PI * 2);
           ctx.strokeStyle = pulse.color;
           ctx.globalAlpha = (1 - t) * 0.28 * pulse.intensity;
           ctx.lineWidth = 3;
           ctx.stroke();
           ctx.globalAlpha = 1;
+        }
+      }
+
+      function drawTouches(width, height, now) {
+        state.touches = state.touches.filter((touch) => now - touch.born < 1300);
+        for (const touch of state.touches) {
+          const age = now - touch.born;
+          const t = age / 1300;
+          const x = touch.x * width;
+          const y = touch.y * height;
+
+          ctx.beginPath();
+          ctx.arc(x, y, 18 + t * 90, 0, Math.PI * 2);
+          ctx.strokeStyle = touch.color;
+          ctx.globalAlpha = (1 - t) * 0.46;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.arc(x, y, 5 + (1 - t) * 8, 0, Math.PI * 2);
+          ctx.fillStyle = touch.color;
+          ctx.globalAlpha = (1 - t) * 0.72;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+        }
+      }
+
+      function interactWithStage(event) {
+        const rect = canvas.getBoundingClientRect();
+        const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+        const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+        const now = performance.now();
+        const ms = playbackMs(now);
+        const color = y > 0.65 ? "#edcb7e" : "#66d8cb";
+
+        state.touches.push({ x, y, born: now, color });
+        state.pulses.push({
+          born: ms,
+          x,
+          y,
+          intensity: 0.34,
+          color
+        });
+
+        collectNearbyNode(x, y, ms);
+        state.lastAction = "touch_ripple";
+      }
+
+      function collectNearbyNode(x, y, ms) {
+        const width = canvas.clientWidth;
+        const height = canvas.clientHeight;
+        const laneCount = 4;
+        const laneWidth = Math.min(90, width / 7);
+        const start = width / 2 - (laneWidth * laneCount) / 2;
+        const travelMs = 2800;
+        const pointerX = x * width;
+        const pointerY = y * height;
+        let collected = false;
+
+        state.nodes = state.nodes.filter((node) => {
+          const age = ms - node.born;
+          const t = Math.max(0, Math.min(1, age / travelMs));
+          const nodeX = start + (Math.max(0, Math.min(laneCount - 1, node.lane)) + 0.5) * laneWidth;
+          const nodeY = height * 0.16 + t * (height * 0.7);
+          const distance = Math.hypot(pointerX - nodeX, pointerY - nodeY);
+          const keep = distance > 54;
+          collected = collected || !keep;
+          return keep;
+        });
+
+        if (collected) {
+          state.lastAction = "collect_node";
+          state.pulses.push({
+            born: ms,
+            x,
+            y,
+            intensity: 0.72,
+            color: "#edcb7e"
+          });
         }
       }
 
@@ -1033,6 +1118,16 @@
         state.pausedAt = playbackMs(performance.now());
         state.isPlaying = false;
         audio.pause();
+      });
+
+      canvas.addEventListener("pointerdown", (event) => {
+        canvas.setPointerCapture(event.pointerId);
+        interactWithStage(event);
+      });
+
+      canvas.addEventListener("pointermove", (event) => {
+        if (event.buttons !== 1 && event.pointerType !== "touch") return;
+        interactWithStage(event);
       });
 
       window.addEventListener("resize", resize);
