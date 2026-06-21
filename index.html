@@ -391,7 +391,7 @@
           <div class="mark" aria-hidden="true"></div>
           <div>
             <h1>Music Flow</h1>
-            <p class="subhead">Phase 1 web prototype and SB contract</p>
+            <p class="subhead">Phase 2 SB-backed prototype</p>
           </div>
         </div>
         <nav class="nav" aria-label="Primary">
@@ -439,10 +439,22 @@
 
           <section class="panel" aria-labelledby="admin-title">
             <h3 id="admin-title">Admin Flow</h3>
-            <p>Upload and process controls are intentionally staged until SB Auth, Storage, and `supabase_flutter` are wired.</p>
+            <p>Fast MVP upload writes directly to SB Storage and triggers the deployed processing function.</p>
             <div class="controls">
-              <button class="button" type="button" disabled>Upload to music-assets</button>
-              <button class="button" type="button" disabled>Process Track</button>
+              <label>
+                Title
+                <input class="input" id="upload-title" type="text" placeholder="Calm study">
+              </label>
+              <label>
+                Artist
+                <input class="input" id="upload-artist" type="text" placeholder="Optional">
+              </label>
+              <label>
+                Audio file
+                <input class="file" id="upload-file" type="file" accept="audio/mpeg,audio/wav,audio/mp3,.mp3,.wav">
+              </label>
+              <button class="button primary" id="upload-process" type="button">Upload and Process</button>
+              <p class="status-note" id="admin-status">Waiting for audio.</p>
             </div>
           </section>
 
@@ -516,11 +528,17 @@
       const sbUrlInput = document.getElementById("sb-url");
       const sbKeyInput = document.getElementById("sb-key");
       const loadSbButton = document.getElementById("load-sb");
+      const uploadTitleInput = document.getElementById("upload-title");
+      const uploadArtistInput = document.getElementById("upload-artist");
+      const uploadFileInput = document.getElementById("upload-file");
+      const uploadProcessButton = document.getElementById("upload-process");
+      const adminStatus = document.getElementById("admin-status");
 
       const storage = {
         url: "music-flow-sb-url",
         key: "music-flow-sb-anon-key"
       };
+      const bucketName = "music-assets";
 
       function resize() {
         const ratio = window.devicePixelRatio || 1;
@@ -825,10 +843,18 @@
         localStorage.setItem(storage.key, sbKeyInput.value.trim());
       }
 
-      async function loadSupabaseTracks() {
-        saveSbConfig();
+      function getSbConfig() {
         const baseUrl = sbUrlInput.value.trim().replace(/\/$/, "");
         const anonKey = sbKeyInput.value.trim();
+        if (!baseUrl || !anonKey) {
+          throw new Error("Add the SB URL and anon key first.");
+        }
+        saveSbConfig();
+        return { baseUrl, anonKey };
+      }
+
+      async function loadSupabaseTracks() {
+        const { baseUrl, anonKey } = getSbConfig();
         const endpoint = `${baseUrl}/rest/v1/ready_tracks?select=id,title,artist,audio_url,bpm,duration_ms,level_map,created_at&order=created_at.desc`;
 
         catalogStatus.textContent = "Loading SB ready_tracks...";
@@ -856,6 +882,100 @@
         }));
         selectTrack(state.tracks[0]);
         catalogStatus.textContent = `Loaded ${state.tracks.length} ready track${state.tracks.length === 1 ? "" : "s"} from SB.`;
+      }
+
+      async function uploadAndProcessTrack() {
+        const { baseUrl, anonKey } = getSbConfig();
+        const file = uploadFileInput.files && uploadFileInput.files[0];
+        const title = uploadTitleInput.value.trim() || (file && file.name.replace(/\.[^.]+$/, "")) || "Untitled Track";
+        const artist = uploadArtistInput.value.trim();
+
+        if (!file) {
+          throw new Error("Choose an audio file first.");
+        }
+
+        const extension = file.name.includes(".") ? file.name.split(".").pop().toLowerCase() : "mp3";
+        const storagePath = `uploads/${Date.now()}-${slugify(title)}.${extension}`;
+        const encodedPath = storagePath.split("/").map(encodeURIComponent).join("/");
+        const storageUrl = `${baseUrl}/storage/v1/object/${bucketName}/${encodedPath}`;
+        const publicAudioUrl = `${baseUrl}/storage/v1/object/public/${bucketName}/${encodedPath}`;
+
+        adminStatus.textContent = "Uploading audio to SB Storage...";
+        const uploadResponse = await fetch(storageUrl, {
+          method: "POST",
+          headers: {
+            apikey: anonKey,
+            Authorization: `Bearer ${anonKey}`,
+            "Content-Type": file.type || "application/octet-stream",
+            "x-upsert": "true"
+          },
+          body: file
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error(`Storage upload failed with ${uploadResponse.status}`);
+        }
+
+        adminStatus.textContent = "Creating track row...";
+        const insertResponse = await fetch(`${baseUrl}/rest/v1/tracks`, {
+          method: "POST",
+          headers: {
+            apikey: anonKey,
+            Authorization: `Bearer ${anonKey}`,
+            "Content-Type": "application/json",
+            Prefer: "return=representation"
+          },
+          body: JSON.stringify({
+            title,
+            artist: artist || null,
+            storage_path: storagePath,
+            audio_url: publicAudioUrl,
+            processing_status: "uploaded",
+            is_published: false
+          })
+        });
+
+        if (!insertResponse.ok) {
+          throw new Error(`Track insert failed with ${insertResponse.status}`);
+        }
+
+        const rows = await insertResponse.json();
+        const track = rows && rows[0];
+        if (!track || !track.id) {
+          throw new Error("Track insert did not return an id.");
+        }
+
+        adminStatus.textContent = "Processing level map...";
+        const processResponse = await fetch(`${baseUrl}/functions/v1/process-track`, {
+          method: "POST",
+          headers: {
+            apikey: anonKey,
+            Authorization: `Bearer ${anonKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ track_id: track.id, storage_path: storagePath })
+        });
+
+        if (!processResponse.ok) {
+          const errorBody = await processResponse.text();
+          throw new Error(`Processing failed with ${processResponse.status}: ${errorBody}`);
+        }
+
+        adminStatus.textContent = "Track ready. Refreshing catalog...";
+        await loadSupabaseTracks();
+        const readyTrack = state.tracks.find((item) => item.id === track.id);
+        if (readyTrack) {
+          selectTrack(readyTrack);
+        }
+        adminStatus.textContent = `"${title}" is ready.`;
+      }
+
+      function slugify(value) {
+        return value
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 48) || "track";
       }
 
       function fallbackMap() {
@@ -887,6 +1007,17 @@
           await loadSupabaseTracks();
         } catch (error) {
           catalogStatus.textContent = error instanceof Error ? error.message : "Unable to load SB catalog.";
+        }
+      });
+
+      uploadProcessButton.addEventListener("click", async () => {
+        uploadProcessButton.disabled = true;
+        try {
+          await uploadAndProcessTrack();
+        } catch (error) {
+          adminStatus.textContent = error instanceof Error ? error.message : "Upload/process failed.";
+        } finally {
+          uploadProcessButton.disabled = false;
         }
       });
 

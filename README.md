@@ -10,15 +10,15 @@ Throughout this project, **SB means Supabase**.
 
 ## Current Phase
 
-**Phase 2 is in progress:** the static GitHub Pages prototype can now fetch ready tracks from SB while keeping the local sample map as a fallback. Flutter remains the planned app shell, but the current static prototype proves the hosted data loop first.
+**Phase 2 is in progress:** the static GitHub Pages prototype can fetch ready tracks from SB, upload audio to Storage, invoke the processing function, and fall back to the local sample map. Flutter remains the planned app shell, but the current static prototype proves the hosted data loop first.
 
 ### Phase Plan
 
 | Phase | Goal | Status |
 | --- | --- | --- |
 | 1 | Static prototype, `level_map` contract, SB schema, deployment docs | Done |
-| 2 | SB-backed static catalog/player, then Flutter web app foundation | In progress |
-| 3 | Admin upload flow using `supabase_flutter` and SB Storage | Planned |
+| 2 | SB-backed static catalog/player and upload/process loop | In progress |
+| 3 | Flutter web app foundation with catalog/player/upload routes | Planned |
 | 4 | SB Edge Function synthesis pipeline with Essentia.js and Gemini Flash | Planned |
 | 5 | GitHub Actions Flutter web build and Pages deployment | Planned |
 | 6 | End-to-end MVP validation with one uploaded ready track | Planned |
@@ -148,8 +148,9 @@ The current `index.html` is the GitHub Pages prototype. It:
 - Saves the SB URL and anon key in browser local storage only.
 - Falls back to `data/sample-level-map.json`.
 - Lets testers choose a local audio file for browser-only playback.
+- Uploads `.mp3` or `.wav` files to the `music-assets` bucket in fast MVP mode.
+- Creates a matching `tracks` row and invokes the deployed `process-track` Edge Function.
 - Renders descending nodes and calm canvas pulses against the loaded timeline.
-- Shows the admin upload/process flow as disabled placeholders until Phase 3.
 
 Open `index.html` directly or use the deployed GitHub Pages URL.
 
@@ -158,6 +159,7 @@ To connect the prototype to SB:
 1. Open the page.
 2. Paste the public anon key from `Project Settings -> API Keys`.
 3. Click `Load Ready Tracks`.
+4. To test the full loop, fill `Admin Flow`, choose an audio file, and click `Upload and Process`.
 
 The anon key is expected to be public frontend configuration. Never paste or commit the service-role key into frontend code.
 
@@ -174,8 +176,8 @@ To finish setup in GitHub:
 
 ## Next Implementation Steps
 
-1. Add a simple static admin upload/process panel against SB Storage and the `process-track` function.
+1. Test one real audio upload through the static prototype.
 2. Create the Flutter app scaffold in this repo without breaking the current Pages prototype.
-3. Add `supabase_flutter`, `just_audio`, and the first catalog/player screens.
+3. Add `supabase_flutter`, `just_audio`, and the first catalog/player/upload screens.
 4. Move the static sample playback logic into Flutter models and rendering code.
 5. Replace placeholder Edge Function synthesis with Essentia.js and Gemini Flash.
