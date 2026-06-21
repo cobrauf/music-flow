@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Music Flow MVP product specification and publishing page.">
+    <title>Music Flow MVP</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #091014;
+        --panel: rgba(8, 17, 22, 0.78);
+        --panel-soft: rgba(255, 255, 255, 0.06);
+        --text: #edf7f5;
+        --muted: #a9bfbc;
+        --line: rgba(255, 255, 255, 0.14);
+        --aqua: #65d6ca;
+        --gold: #e7c87a;
+        --rose: #d987a3;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        background: var(--bg);
+        color: var(--text);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        line-height: 1.6;
+      }
+
+      .scene {
+        position: fixed;
+        inset: 0;
+        z-index: -2;
+        background:
+          radial-gradient(circle at 12% 18%, rgba(101, 214, 202, 0.22), transparent 34%),
+          radial-gradient(circle at 86% 12%, rgba(217, 135, 163, 0.18), transparent 30%),
+          linear-gradient(145deg, #091014 0%, #102026 46%, #150f1b 100%);
+      }
+
+      canvas {
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        width: 100%;
+        height: 100%;
+        opacity: 0.62;
+      }
+
+      header {
+        min-height: 92vh;
+        display: grid;
+        align-items: center;
+        padding: 32px clamp(20px, 5vw, 72px);
+      }
+
+      nav {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        padding: 16px clamp(20px, 5vw, 72px);
+        background: rgba(9, 16, 20, 0.76);
+        border-bottom: 1px solid var(--line);
+        backdrop-filter: blur(18px);
+      }
+
+      nav a {
+        color: var(--muted);
+        text-decoration: none;
+        font-size: 0.92rem;
+      }
+
+      nav a:hover {
+        color: var(--text);
+      }
+
+      .brand {
+        color: var(--text);
+        font-weight: 750;
+      }
+
+      .links {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 16px;
+      }
+
+      .hero {
+        width: min(920px, 100%);
+        padding-top: 56px;
+      }
+
+      .eyebrow {
+        margin: 0 0 16px;
+        color: var(--aqua);
+        font-size: 0.9rem;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+
+      h1 {
+        margin: 0;
+        max-width: 760px;
+        font-size: clamp(3.2rem, 10vw, 8.2rem);
+        line-height: 0.9;
+        letter-spacing: 0;
+      }
+
+      .lede {
+        max-width: 700px;
+        margin: 28px 0 0;
+        color: var(--muted);
+        font-size: clamp(1.1rem, 2vw, 1.35rem);
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 34px;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 44px;
+        padding: 10px 16px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        color: var(--text);
+        background: rgba(255, 255, 255, 0.08);
+        text-decoration: none;
+        font-weight: 700;
+      }
+
+      .button.primary {
+        border-color: rgba(101, 214, 202, 0.44);
+        background: rgba(101, 214, 202, 0.16);
+      }
+
+      main {
+        background: rgba(9, 16, 20, 0.86);
+        border-top: 1px solid var(--line);
+      }
+
+      section {
+        padding: 72px clamp(20px, 5vw, 72px);
+      }
+
+      .content {
+        width: min(1100px, 100%);
+        margin: 0 auto;
+      }
+
+      h2 {
+        margin: 0 0 18px;
+        font-size: clamp(2rem, 4vw, 3.3rem);
+        line-height: 1.05;
+        letter-spacing: 0;
+      }
+
+      h3 {
+        margin: 0 0 10px;
+        font-size: 1.08rem;
+        letter-spacing: 0;
+      }
+
+      p {
+        margin: 0 0 18px;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .flow {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 28px;
+      }
+
+      .step,
+      .stack li,
+      .scope li {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel-soft);
+      }
+
+      .step {
+        min-height: 128px;
+        padding: 18px;
+      }
+
+      .step span {
+        display: block;
+        color: var(--gold);
+        font-size: 0.82rem;
+        font-weight: 750;
+        text-transform: uppercase;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+        margin-top: 28px;
+      }
+
+      .stack,
+      .scope {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        padding: 0;
+        margin: 28px 0 0;
+        list-style: none;
+      }
+
+      .stack li,
+      .scope li {
+        padding: 16px;
+      }
+
+      .tag {
+        color: var(--rose);
+        font-weight: 750;
+      }
+
+      pre {
+        overflow: auto;
+        margin: 24px 0 0;
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: rgba(0, 0, 0, 0.32);
+        color: #e7f9f6;
+      }
+
+      code {
+        font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+        font-size: 0.9rem;
+      }
+
+      footer {
+        padding: 32px clamp(20px, 5vw, 72px);
+        color: var(--muted);
+        border-top: 1px solid var(--line);
+        background: rgba(0, 0, 0, 0.24);
+      }
+
+      @media (max-width: 860px) {
+        nav {
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .links {
+          justify-content: flex-start;
+        }
+
+        .flow,
+        .grid,
+        .stack,
+        .scope {
+          grid-template-columns: 1fr;
+        }
+
+        header {
+          min-height: 86vh;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="scene" aria-hidden="true"></div>
+    <canvas id="field" aria-hidden="true"></canvas>
+
+    <nav aria-label="Primary">
+      <a class="brand" href="#">Music Flow</a>
+      <div class="links">
+        <a href="#flow">Flow</a>
+        <a href="#stack">Stack</a>
+        <a href="#scope">Scope</a>
+        <a href="README.md">README</a>
+      </div>
+    </nav>
+
+    <header>
+      <div class="hero">
+        <p class="eyebrow">MVP Specification</p>
+        <h1>Music Flow</h1>
+        <p class="lede">
+          An interactive mobile and web audio-visual experience designed to guide users into a calm flow state through rhythmic interaction and reactive tranquil art.
+        </p>
+        <div class="actions">
+          <a class="button primary" href="#flow">View Product Flow</a>
+          <a class="button" href="README.md">Read Full PRD</a>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section id="flow">
+        <div class="content">
+          <h2>Operational Pipeline</h2>
+          <p class="muted">
+            The MVP proves the full path from uploaded audio to generated gameplay data and synchronized visual rendering.
+          </p>
+          <div class="flow">
+            <article class="step">
+              <span>01</span>
+              <h3>Audio Upload</h3>
+              <p class="muted">Admins upload ambient `.mp3` or `.wav` tracks to Supabase Storage.</p>
+            </article>
+            <article class="step">
+              <span>02</span>
+              <h3>Audio Analysis</h3>
+              <p class="muted">Edge Functions extract beats, transients, and structural sections.</p>
+            </article>
+            <article class="step">
+              <span>03</span>
+              <h3>LLM Choreography</h3>
+              <p class="muted">Gemini interprets composition structure and produces a sequenced level map.</p>
+            </article>
+            <article class="step">
+              <span>04</span>
+              <h3>Reactive Playback</h3>
+              <p class="muted">Flutter renders synchronized hit nodes and fluid shader visuals.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section id="stack">
+        <div class="content">
+          <h2>Recommended Stack</h2>
+          <ul class="stack">
+            <li><span class="tag">UI</span><br>Flutter 3.x and WebAssembly</li>
+            <li><span class="tag">Graphics</span><br>Flutter Canvas, Impeller, and GLSL</li>
+            <li><span class="tag">Backend</span><br>Supabase Postgres and Edge Functions</li>
+            <li><span class="tag">Storage</span><br>Supabase Storage CDN buckets</li>
+            <li><span class="tag">Analysis</span><br>Essentia.js compiled to WASM</li>
+            <li><span class="tag">Choreography</span><br>Gemini Flash API for JSON mapping</li>
+          </ul>
+        </div>
+      </section>
+
+      <section>
+        <div class="content grid">
+          <div>
+            <h2>Data Shape</h2>
+            <p class="muted">
+              Tracks persist streamable audio metadata alongside a generated rhythmic timeline.
+            </p>
+          </div>
+          <pre><code>{
+  "theme": "aurora_fractal",
+  "events": [
+    { "time_ms": 1200, "action": "spawn_node", "lane": 2 },
+    { "time_ms": 4800, "action": "shift_visual_state" }
+  ]
+}</code></pre>
+        </div>
+      </section>
+
+      <section id="scope">
+        <div class="content">
+          <h2>MVP Scope</h2>
+          <ul class="scope">
+            <li>Manual admin upload interface for processing new audio tracks.</li>
+            <li>Backend pipeline that produces valid `level_map` JSON.</li>
+            <li>Minimal frontend with descending hit nodes over a fluid canvas.</li>
+            <li>Flutter Wasm browser rendering verification.</li>
+            <li>No complex profiles, creator tools, leaderboards, or client-side multi-track mixing.</li>
+            <li>Haptic feedback is reserved for post-MVP mobile refinement.</li>
+          </ul>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      Music Flow MVP publishing page. Full source lives in the repository README.
+    </footer>
+
+    <script>
+      const canvas = document.getElementById("field");
+      const ctx = canvas.getContext("2d");
+      const points = Array.from({ length: 54 }, (_, index) => ({
+        x: Math.random(),
+        y: Math.random(),
+        r: 1.5 + Math.random() * 3.5,
+        phase: index * 0.37,
+        speed: 0.0018 + Math.random() * 0.0016
+      }));
+
+      function resize() {
+        const ratio = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(window.innerWidth * ratio);
+        canvas.height = Math.floor(window.innerHeight * ratio);
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      }
+
+      function draw(time) {
+        const width = window.innerWidth;
+        const height = window.innerHeight;
+        ctx.clearRect(0, 0, width, height);
+        ctx.lineWidth = 1;
+
+        for (const point of points) {
+          const x = point.x * width + Math.sin(time * point.speed + point.phase) * 34;
+          const y = point.y * height + Math.cos(time * point.speed * 0.8 + point.phase) * 28;
+          const radius = point.r + Math.sin(time * 0.002 + point.phase) * 0.8;
+          ctx.beginPath();
+          ctx.arc(x, y, radius, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(101, 214, 202, 0.42)";
+          ctx.fill();
+        }
+
+        for (let index = 0; index < points.length - 1; index += 1) {
+          const a = points[index];
+          const b = points[index + 1];
+          const ax = a.x * width + Math.sin(time * a.speed + a.phase) * 34;
+          const ay = a.y * height + Math.cos(time * a.speed * 0.8 + a.phase) * 28;
+          const bx = b.x * width + Math.sin(time * b.speed + b.phase) * 34;
+          const by = b.y * height + Math.cos(time * b.speed * 0.8 + b.phase) * 28;
+          ctx.beginPath();
+          ctx.moveTo(ax, ay);
+          ctx.lineTo(bx, by);
+          ctx.strokeStyle = index % 3 === 0 ? "rgba(231, 200, 122, 0.18)" : "rgba(101, 214, 202, 0.13)";
+          ctx.stroke();
+        }
+
+        requestAnimationFrame(draw);
+      }
+
+      window.addEventListener("resize", resize);
+      resize();
+      requestAnimationFrame(draw);
+    </script>
+  </body>
+</html>

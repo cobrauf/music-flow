@@ -149,3 +149,16 @@ The first target prototype needs a clear visual theme. Candidate directions incl
 - Fluid geometric fractals.
 - Soft bleeding watercolor auroras.
 - Rain-on-water ripples.
+
+## GitHub Pages Publishing
+
+This repository includes a static GitHub Pages site in `index.html`.
+
+Publishing is handled by `.github/workflows/pages.yml`. On every push to `main`, GitHub Actions uploads the repository root as a Pages artifact and deploys it with GitHub Pages.
+
+To finish setup in GitHub:
+
+1. Open the repository settings.
+2. Go to Pages.
+3. Set the source to GitHub Actions.
+4. Push `main` to GitHub.
