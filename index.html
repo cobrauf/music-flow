@@ -634,15 +634,15 @@
                 <label>
                   Minimum speed
                   <div class="slider-row">
-                    <input id="trace-min-speed" type="range" min="1" max="50" value="6">
+                    <input id="trace-min-speed" type="range" min="1" max="10" value="6">
                     <span id="trace-min-speed-value">6</span>
                   </div>
                 </label>
                 <label>
                   Maximum speed
                   <div class="slider-row">
-                    <input id="trace-max-speed" type="range" min="10" max="100" value="65">
-                    <span id="trace-max-speed-value">65</span>
+                    <input id="trace-max-speed" type="range" min="2" max="50" value="50">
+                    <span id="trace-max-speed-value">50</span>
                   </div>
                 </label>
                 <label>
@@ -650,6 +650,24 @@
                   <div class="slider-row">
                     <input id="trace-opacity" type="range" min="10" max="100" value="90">
                     <span id="trace-opacity-value">90%</span>
+                  </div>
+                </label>
+                <label>
+                  Highlight color
+                  <input class="input" id="trace-highlight-color" type="color" value="#edcb7e">
+                </label>
+                <label>
+                  Highlight brightness
+                  <div class="slider-row">
+                    <input id="trace-highlight-brightness" type="range" min="25" max="160" value="100">
+                    <span id="trace-highlight-brightness-value">100%</span>
+                  </div>
+                </label>
+                <label>
+                  Trace threshold
+                  <div class="slider-row">
+                    <input id="trace-threshold" type="range" min="4" max="80" value="28">
+                    <span id="trace-threshold-value">28 px</span>
                   </div>
                 </label>
                 <p class="status-note" id="trace-status">Upload a pattern.</p>
@@ -732,6 +750,14 @@
         trace: {
           mode: "off",
           image: null,
+          outlineMask: null,
+          highlight: null,
+          highlightCtx: null,
+          highlightTint: null,
+          highlightTintCtx: null,
+          hotspot: null,
+          hotspotCtx: null,
+          highlightDirty: false,
           imageUrl: "",
           patternName: "",
           bounds: null,
@@ -739,10 +765,14 @@
           activePath: null,
           isPointerDown: false,
           lastPoint: null,
+          lastGoodPoint: null,
           smoothedSpeed: 0,
           minSpeed: 60,
-          maxSpeed: 650,
+          maxSpeed: 500,
           opacity: 0.9,
+          highlightColor: "#edcb7e",
+          highlightBrightness: 1,
+          threshold: 28,
           gate: "idle",
           wasPausedByGate: false,
           resumePromise: null
@@ -785,6 +815,11 @@
       const traceMaxSpeedValue = document.getElementById("trace-max-speed-value");
       const traceOpacityInput = document.getElementById("trace-opacity");
       const traceOpacityValue = document.getElementById("trace-opacity-value");
+      const traceHighlightColorInput = document.getElementById("trace-highlight-color");
+      const traceHighlightBrightnessInput = document.getElementById("trace-highlight-brightness");
+      const traceHighlightBrightnessValue = document.getElementById("trace-highlight-brightness-value");
+      const traceThresholdInput = document.getElementById("trace-threshold");
+      const traceThresholdValue = document.getElementById("trace-threshold-value");
       const traceStatus = document.getElementById("trace-status");
 
       const storage = {
@@ -792,6 +827,11 @@
         key: "music-flow-sb-anon-key",
         musicVolume: "music-flow-music-volume",
         tapVolume: "music-flow-tap-volume"
+      };
+      const traceCache = {
+        dbName: "music-flow-trace-cache",
+        storeName: "patterns",
+        key: "latest"
       };
       const bucketName = "music-assets";
       const grid = {
@@ -901,18 +941,32 @@
         traceStatus.textContent = "Processing pattern...";
 
         const image = await loadImageFromFile(file);
-        const processedCanvas = processTraceImage(image);
+        const processed = processTraceImage(image);
 
+        installTracePattern(processed, file.name);
+        await saveCachedTracePattern(file, processed.canvas);
+      }
+
+      function installTracePattern(processed, patternName) {
         if (state.trace.imageUrl) {
           URL.revokeObjectURL(state.trace.imageUrl);
         }
 
-        state.trace.imageUrl = URL.createObjectURL(file);
-        state.trace.image = processedCanvas;
-        state.trace.patternName = file.name;
+        state.trace.imageUrl = "";
+        state.trace.image = processed.canvas;
+        state.trace.outlineMask = processed.outlineMask;
+        state.trace.highlight = createTraceHighlightCanvas(processed.canvas.width, processed.canvas.height);
+        state.trace.highlightCtx = state.trace.highlight.getContext("2d", { willReadFrequently: true });
+        state.trace.highlightTint = createTraceHighlightCanvas(processed.canvas.width, processed.canvas.height);
+        state.trace.highlightTintCtx = state.trace.highlightTint.getContext("2d", { willReadFrequently: true });
+        state.trace.hotspot = createTraceHighlightCanvas(1, 1);
+        state.trace.hotspotCtx = state.trace.hotspot.getContext("2d", { willReadFrequently: true });
+        state.trace.highlightDirty = true;
+        state.trace.patternName = patternName;
         state.trace.paths = [];
         state.trace.activePath = null;
         state.trace.lastPoint = null;
+        state.trace.lastGoodPoint = null;
         state.trace.gate = "ready";
         state.trace.wasPausedByGate = false;
         setTraceGate("ready");
@@ -932,6 +986,113 @@
           };
           image.src = url;
         });
+      }
+
+      function loadImageFromBlob(blob) {
+        return new Promise((resolve, reject) => {
+          const url = URL.createObjectURL(blob);
+          const image = new Image();
+          image.onload = () => {
+            URL.revokeObjectURL(url);
+            resolve(image);
+          };
+          image.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error("Unable to restore cached image."));
+          };
+          image.src = url;
+        });
+      }
+
+      function openTraceCache() {
+        return new Promise((resolve, reject) => {
+          if (!("indexedDB" in window)) {
+            reject(new Error("IndexedDB is not available."));
+            return;
+          }
+
+          const request = indexedDB.open(traceCache.dbName, 1);
+          request.onupgradeneeded = () => {
+            const db = request.result;
+            if (!db.objectStoreNames.contains(traceCache.storeName)) {
+              db.createObjectStore(traceCache.storeName, { keyPath: "id" });
+            }
+          };
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error || new Error("Unable to open trace cache."));
+        });
+      }
+
+      function writeTraceCacheRecord(record) {
+        return openTraceCache().then((db) => new Promise((resolve, reject) => {
+          const transaction = db.transaction(traceCache.storeName, "readwrite");
+          const store = transaction.objectStore(traceCache.storeName);
+          store.put(record);
+          transaction.oncomplete = () => {
+            db.close();
+            resolve();
+          };
+          transaction.onerror = () => {
+            db.close();
+            reject(transaction.error || new Error("Unable to write trace cache."));
+          };
+        }));
+      }
+
+      function readTraceCacheRecord() {
+        return openTraceCache().then((db) => new Promise((resolve, reject) => {
+          const transaction = db.transaction(traceCache.storeName, "readonly");
+          const store = transaction.objectStore(traceCache.storeName);
+          const request = store.get(traceCache.key);
+          request.onsuccess = () => resolve(request.result || null);
+          request.onerror = () => reject(request.error || new Error("Unable to read trace cache."));
+          transaction.oncomplete = () => db.close();
+          transaction.onerror = () => {
+            db.close();
+            reject(transaction.error || new Error("Unable to read trace cache."));
+          };
+        }));
+      }
+
+      function canvasToBlob(canvasElement) {
+        return new Promise((resolve, reject) => {
+          canvasElement.toBlob((blob) => {
+            if (blob) {
+              resolve(blob);
+            } else {
+              reject(new Error("Unable to cache processed pattern."));
+            }
+          }, "image/png");
+        });
+      }
+
+      async function saveCachedTracePattern(file, processedCanvas) {
+        try {
+          const processedBlob = await canvasToBlob(processedCanvas);
+          await writeTraceCacheRecord({
+            id: traceCache.key,
+            name: file.name,
+            type: file.type,
+            originalBlob: file,
+            processedBlob,
+            savedAt: Date.now()
+          });
+        } catch (error) {
+          console.warn("Trace pattern cache unavailable.", error);
+        }
+      }
+
+      async function loadCachedTracePattern() {
+        try {
+          const record = await readTraceCacheRecord();
+          if (!record || !record.processedBlob) return;
+
+          const image = await loadImageFromBlob(record.processedBlob);
+          const processed = processedTraceFromImage(image);
+          installTracePattern(processed, record.name || "Cached pattern");
+        } catch (error) {
+          console.warn("Unable to restore cached trace pattern.", error);
+        }
       }
 
       function processTraceImage(image) {
@@ -977,7 +1138,30 @@
         }
 
         outputCtx.putImageData(outputData, 0, 0);
-        return output;
+        return { canvas: output, outlineMask: outputData };
+      }
+
+      function processedTraceFromImage(image) {
+        const width = image.naturalWidth || image.width;
+        const height = image.naturalHeight || image.height;
+        const canvasElement = document.createElement("canvas");
+        const canvasCtx = canvasElement.getContext("2d", { willReadFrequently: true });
+
+        canvasElement.width = width;
+        canvasElement.height = height;
+        canvasCtx.drawImage(image, 0, 0, width, height);
+
+        return {
+          canvas: canvasElement,
+          outlineMask: canvasCtx.getImageData(0, 0, width, height)
+        };
+      }
+
+      function createTraceHighlightCanvas(width, height) {
+        const canvasElement = document.createElement("canvas");
+        canvasElement.width = width;
+        canvasElement.height = height;
+        return canvasElement;
       }
 
       function normalizeLevelMap(map) {
@@ -1130,6 +1314,12 @@
         return { x, y, width: drawWidth, height: drawHeight, scale };
       }
 
+      function ensureTraceBounds() {
+        if (!state.trace.image) return null;
+        state.trace.bounds = getTraceBounds(canvas.clientWidth, canvas.clientHeight);
+        return state.trace.bounds;
+      }
+
       function drawTraceLayer(width, height, now) {
         if (!isTracingReady()) return;
 
@@ -1141,37 +1331,20 @@
         ctx.drawImage(state.trace.image, bounds.x, bounds.y, bounds.width, bounds.height);
         ctx.restore();
 
+        renderTraceHighlightTint();
+        if (state.trace.highlightTint) {
+          ctx.save();
+          ctx.drawImage(state.trace.highlightTint, bounds.x, bounds.y, bounds.width, bounds.height);
+          ctx.restore();
+        }
+        drawTraceHotspot();
+        drawTraceTouchGlow(now);
+
         ctx.save();
         ctx.strokeStyle = "rgba(102, 216, 203, 0.18)";
         ctx.lineWidth = 1;
         ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
         ctx.restore();
-
-        for (const path of state.trace.paths) {
-          drawTracePath(path, now);
-        }
-      }
-
-      function drawTracePath(path, now) {
-        if (!path || path.points.length < 2) return;
-        for (let index = 1; index < path.points.length; index += 1) {
-          const previous = path.points[index - 1];
-          const point = path.points[index];
-          const age = Math.max(0, now - point.time);
-          const fresh = Math.max(0.35, 1 - age / 9000);
-          const isGood = point.gate === "good";
-
-          ctx.beginPath();
-          ctx.moveTo(previous.x, previous.y);
-          ctx.lineTo(point.x, point.y);
-          ctx.lineCap = "round";
-          ctx.lineJoin = "round";
-          ctx.lineWidth = isGood ? 8 : 4;
-          ctx.strokeStyle = isGood
-            ? `rgba(237, 203, 126, ${0.62 * fresh})`
-            : `rgba(229, 139, 168, ${0.34 * fresh})`;
-          ctx.stroke();
-        }
       }
 
       function updateTraceIdleGate(now) {
@@ -1179,6 +1352,115 @@
         if (now - state.trace.lastPoint.time > 420) {
           setTraceGate("slow");
         }
+      }
+
+      function renderTraceHighlightTint() {
+        if (!state.trace.highlightDirty || !state.trace.highlight || !state.trace.highlightCtx || !state.trace.highlightTintCtx) return;
+
+        const width = state.trace.highlight.width;
+        const height = state.trace.highlight.height;
+        const sourceData = state.trace.highlightCtx.getImageData(0, 0, width, height);
+        const targetData = state.trace.highlightTintCtx.createImageData(width, height);
+        const sourcePixels = sourceData.data;
+        const targetPixels = targetData.data;
+        const color = hexToRgb(state.trace.highlightColor) || { r: 237, g: 203, b: 126 };
+        const brightness = Math.max(0.25, Math.min(1.6, state.trace.highlightBrightness));
+
+        for (let index = 0; index < sourcePixels.length; index += 4) {
+          const alpha = sourcePixels[index + 3];
+          if (alpha === 0) continue;
+
+          targetPixels[index] = Math.min(255, Math.round(color.r * brightness));
+          targetPixels[index + 1] = Math.min(255, Math.round(color.g * brightness));
+          targetPixels[index + 2] = Math.min(255, Math.round(color.b * brightness));
+          targetPixels[index + 3] = alpha;
+        }
+
+        state.trace.highlightTintCtx.putImageData(targetData, 0, 0);
+        state.trace.highlightDirty = false;
+      }
+
+      function drawTraceHotspot() {
+        if (!state.trace.lastGoodPoint || !state.trace.hotspot || !state.trace.hotspotCtx) return;
+
+        const outlineSearch = getTraceOutlineSearch(
+          state.trace.lastGoodPoint.x,
+          state.trace.lastGoodPoint.y,
+          Math.max(12, state.trace.threshold * 0.72)
+        );
+        if (!outlineSearch) return;
+
+        const { left, top, width, height, imageX, imageY, radius, maskPixels, maskWidth } = outlineSearch;
+        const color = hexToRgb(state.trace.highlightColor) || { r: 237, g: 203, b: 126 };
+        const brightness = Math.max(0.35, Math.min(2.2, state.trace.highlightBrightness * 1.55));
+        if (state.trace.hotspot.width !== width || state.trace.hotspot.height !== height) {
+          state.trace.hotspot.width = width;
+          state.trace.hotspot.height = height;
+        }
+        const hotspotData = state.trace.hotspotCtx.createImageData(width, height);
+        const hotspotPixels = hotspotData.data;
+        const radiusSquared = radius * radius;
+
+        for (let y = 0; y < height; y += 1) {
+          for (let x = 0; x < width; x += 1) {
+            const absoluteX = left + x;
+            const absoluteY = top + y;
+            const distanceSquared = (absoluteX - imageX) ** 2 + (absoluteY - imageY) ** 2;
+            if (distanceSquared > radiusSquared) continue;
+
+            const maskIndex = (absoluteY * maskWidth + absoluteX) * 4;
+            if (maskPixels[maskIndex + 3] < 180) continue;
+
+            const falloff = 1 - distanceSquared / radiusSquared;
+            const outputIndex = (y * width + x) * 4;
+            hotspotPixels[outputIndex] = Math.min(255, Math.round(color.r * brightness));
+            hotspotPixels[outputIndex + 1] = Math.min(255, Math.round(color.g * brightness));
+            hotspotPixels[outputIndex + 2] = Math.min(255, Math.round(color.b * brightness));
+            hotspotPixels[outputIndex + 3] = Math.max(150, Math.round(255 * falloff));
+          }
+        }
+
+        state.trace.hotspotCtx.putImageData(hotspotData, 0, 0);
+
+        const bounds = state.trace.bounds;
+        ctx.save();
+        ctx.globalCompositeOperation = "screen";
+        ctx.drawImage(
+          state.trace.hotspot,
+          bounds.x + left * bounds.scale,
+          bounds.y + top * bounds.scale,
+          width * bounds.scale,
+          height * bounds.scale
+        );
+        ctx.restore();
+      }
+
+      function drawTraceTouchGlow(now) {
+        if (!state.trace.isPointerDown || !state.trace.lastPoint) return;
+
+        const point = state.trace.lastPoint;
+        const color = state.trace.gate === "off" || state.trace.gate === "fast"
+          ? { r: 229, g: 139, b: 168 }
+          : (hexToRgb(state.trace.highlightColor) || { r: 237, g: 203, b: 126 });
+        const pulse = 0.5 + Math.sin(now / 110) * 0.5;
+        const radius = 28 + pulse * 10;
+        const glow = ctx.createRadialGradient(point.x, point.y, 2, point.x, point.y, radius);
+
+        glow.addColorStop(0, `rgba(${color.r}, ${color.g}, ${color.b}, 0.9)`);
+        glow.addColorStop(0.34, `rgba(${color.r}, ${color.g}, ${color.b}, 0.28)`);
+        glow.addColorStop(1, `rgba(${color.r}, ${color.g}, ${color.b}, 0)`);
+
+        ctx.save();
+        ctx.globalCompositeOperation = "screen";
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.95)`;
+        ctx.fill();
+        ctx.restore();
       }
 
       function drawTimingBar(width, height) {
@@ -1318,8 +1600,9 @@
       }
 
       function startTracing(event) {
+        ensureTraceBounds();
         const point = tracePointFromEvent(event);
-        const path = { points: [{ ...point, gate: "idle" }] };
+        const path = { points: [] };
 
         state.trace.isPointerDown = true;
         state.trace.activePath = path;
@@ -1332,6 +1615,7 @@
       function continueTracing(event) {
         if (!state.trace.isPointerDown || !state.trace.activePath) return;
 
+        ensureTraceBounds();
         const point = tracePointFromEvent(event);
         const previous = state.trace.lastPoint;
         if (!previous) {
@@ -1345,12 +1629,143 @@
         const smoothedSpeed = state.trace.smoothedSpeed
           ? state.trace.smoothedSpeed * 0.72 + instantSpeed * 0.28
           : instantSpeed;
-        const gate = classifyTraceSpeed(smoothedSpeed);
+        const gate = isTracePointNearOutline(point) ? classifyTraceSpeed(smoothedSpeed) : "off";
 
         state.trace.smoothedSpeed = smoothedSpeed;
         state.trace.activePath.points.push({ ...point, gate });
         state.trace.lastPoint = point;
         setTraceGate(gate);
+        if (gate === "good") {
+          state.trace.lastGoodPoint = point;
+          highlightTraceBetween(previous, point);
+        }
+      }
+
+      function highlightTraceBetween(startPoint, endPoint) {
+        const distance = Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
+        const steps = Math.max(1, Math.ceil(distance / 14));
+
+        for (let step = 0; step <= steps; step += 1) {
+          const t = step / steps;
+          stampTraceHighlight(
+            startPoint.x + (endPoint.x - startPoint.x) * t,
+            startPoint.y + (endPoint.y - startPoint.y) * t
+          );
+        }
+      }
+
+      function isTracePointNearOutline(point) {
+        return hasOutlineNearPoint(point.x, point.y, state.trace.threshold);
+      }
+
+      function hasOutlineNearPoint(screenX, screenY, screenRadius) {
+        const outlineSearch = getTraceOutlineSearch(screenX, screenY, screenRadius);
+        if (!outlineSearch) return false;
+
+        const { left, top, width, height, imageX, imageY, radius, maskPixels, maskWidth } = outlineSearch;
+        const radiusSquared = radius * radius;
+
+        for (let y = 0; y < height; y += 1) {
+          for (let x = 0; x < width; x += 1) {
+            const absoluteX = left + x;
+            const absoluteY = top + y;
+            const distanceSquared = (absoluteX - imageX) ** 2 + (absoluteY - imageY) ** 2;
+            if (distanceSquared > radiusSquared) continue;
+
+            const maskIndex = (absoluteY * maskWidth + absoluteX) * 4;
+            if (maskPixels[maskIndex + 3] >= 180) return true;
+          }
+        }
+
+        return false;
+      }
+
+      function stampTraceHighlight(screenX, screenY) {
+        if (!state.trace.highlightCtx) return;
+
+        const outlineSearch = getTraceOutlineSearch(screenX, screenY, state.trace.threshold);
+        if (!outlineSearch) return;
+
+        const { left, top, width, height, imageX, imageY, radius, maskPixels, maskWidth } = outlineSearch;
+
+        const highlightData = state.trace.highlightCtx.getImageData(left, top, width, height);
+        const highlightPixels = highlightData.data;
+        const radiusSquared = radius * radius;
+        let changed = false;
+
+        for (let y = 0; y < height; y += 1) {
+          for (let x = 0; x < width; x += 1) {
+            const absoluteX = left + x;
+            const absoluteY = top + y;
+            const distanceSquared = (absoluteX - imageX) ** 2 + (absoluteY - imageY) ** 2;
+            if (distanceSquared > radiusSquared) continue;
+
+            const maskIndex = (absoluteY * maskWidth + absoluteX) * 4;
+            if (maskPixels[maskIndex + 3] < 180) continue;
+
+            const outputIndex = (y * width + x) * 4;
+            highlightPixels[outputIndex] = 255;
+            highlightPixels[outputIndex + 1] = 255;
+            highlightPixels[outputIndex + 2] = 255;
+            highlightPixels[outputIndex + 3] = 255;
+            changed = true;
+          }
+        }
+
+        state.trace.highlightCtx.putImageData(highlightData, left, top);
+        state.trace.highlightDirty = changed || state.trace.highlightDirty;
+      }
+
+      function getTraceOutlineSearch(screenX, screenY, screenRadius) {
+        if (!state.trace.outlineMask || !state.trace.highlight) return null;
+
+        if (!state.trace.bounds) {
+          ensureTraceBounds();
+        }
+        if (!state.trace.bounds) return null;
+
+        const bounds = state.trace.bounds;
+        if (
+          screenX < bounds.x - screenRadius ||
+          screenX > bounds.x + bounds.width + screenRadius ||
+          screenY < bounds.y - screenRadius ||
+          screenY > bounds.y + bounds.height + screenRadius
+        ) {
+          return null;
+        }
+
+        const imageX = Math.round((screenX - bounds.x) / bounds.scale);
+        const imageY = Math.round((screenY - bounds.y) / bounds.scale);
+        const radius = Math.max(2, Math.round(screenRadius / bounds.scale));
+        const left = Math.max(0, imageX - radius);
+        const top = Math.max(0, imageY - radius);
+        const right = Math.min(state.trace.highlight.width, imageX + radius + 1);
+        const bottom = Math.min(state.trace.highlight.height, imageY + radius + 1);
+        const width = right - left;
+        const height = bottom - top;
+        if (width <= 0 || height <= 0) return null;
+
+        return {
+          left,
+          top,
+          width,
+          height,
+          imageX,
+          imageY,
+          radius,
+          maskPixels: state.trace.outlineMask.data,
+          maskWidth: state.trace.outlineMask.width
+        };
+      }
+
+      function hexToRgb(hex) {
+        const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        if (!match) return null;
+        return {
+          r: parseInt(match[1], 16),
+          g: parseInt(match[2], 16),
+          b: parseInt(match[3], 16)
+        };
       }
 
       function endTracing() {
@@ -1437,6 +1852,12 @@
 
         if (gate === "fast") {
           traceStatus.textContent = "Too fast.";
+          traceStatus.classList.add("hot");
+          return;
+        }
+
+        if (gate === "off") {
+          traceStatus.textContent = "Off pattern.";
           traceStatus.classList.add("hot");
           return;
         }
@@ -1954,7 +2375,7 @@
         const minValue = Number(traceMinSpeedInput.value);
         state.trace.minSpeed = minValue * 10;
         if (state.trace.minSpeed >= state.trace.maxSpeed) {
-          const nextMaxValue = Math.min(Number(traceMaxSpeedInput.max), minValue + 5);
+          const nextMaxValue = Math.min(Number(traceMaxSpeedInput.max), Math.max(Number(traceMaxSpeedInput.min), minValue + 1));
           traceMaxSpeedInput.value = String(nextMaxValue);
           state.trace.maxSpeed = nextMaxValue * 10;
         }
@@ -1966,7 +2387,7 @@
         const maxValue = Number(traceMaxSpeedInput.value);
         state.trace.maxSpeed = maxValue * 10;
         if (state.trace.maxSpeed <= state.trace.minSpeed) {
-          const nextMinValue = Math.max(Number(traceMinSpeedInput.min), maxValue - 5);
+          const nextMinValue = Math.max(Number(traceMinSpeedInput.min), Math.min(Number(traceMinSpeedInput.max), maxValue - 1));
           traceMinSpeedInput.value = String(nextMinValue);
           state.trace.minSpeed = nextMinValue * 10;
         }
@@ -1977,6 +2398,22 @@
       traceOpacityInput.addEventListener("input", () => {
         state.trace.opacity = Number(traceOpacityInput.value) / 100;
         traceOpacityValue.textContent = `${traceOpacityInput.value}%`;
+      });
+
+      traceHighlightColorInput.addEventListener("input", () => {
+        state.trace.highlightColor = traceHighlightColorInput.value;
+        state.trace.highlightDirty = true;
+      });
+
+      traceHighlightBrightnessInput.addEventListener("input", () => {
+        state.trace.highlightBrightness = Number(traceHighlightBrightnessInput.value) / 100;
+        traceHighlightBrightnessValue.textContent = `${traceHighlightBrightnessInput.value}%`;
+        state.trace.highlightDirty = true;
+      });
+
+      traceThresholdInput.addEventListener("input", () => {
+        state.trace.threshold = Number(traceThresholdInput.value);
+        traceThresholdValue.textContent = `${traceThresholdInput.value} px`;
       });
 
       playToggleButton.addEventListener("click", async () => {
@@ -2034,7 +2471,7 @@
       });
       loadSoundSettings();
       resize();
-      loadMap().then(() => requestAnimationFrame(draw));
+      Promise.allSettled([loadCachedTracePattern(), loadMap()]).then(() => requestAnimationFrame(draw));
     </script>
   </body>
 </html>
