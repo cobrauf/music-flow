@@ -1,164 +1,169 @@
 # Music Flow
 
-Music Flow is an interactive mobile and web audio-visual experience designed to guide users into a psychological flow state through rhythmic interaction and reactive, tranquil art.
-
-Unlike traditional rhythm games that emphasize high-speed reflexes, Music Flow prioritizes calmness, fluid movement, and aesthetic immersion.
-
-## MVP Goal
-
-Establish an end-to-end operational pipeline:
+Music Flow is a web-first audio-visual MVP for calm rhythm interaction. The product loop is:
 
 ```text
-User Audio Upload
-  -> Backend AI / Algorithmic Synthesis
-  -> Interactive JSON Level Map
-  -> Beautiful Frontend Visualization
+Admin audio upload -> SB Storage -> synthesis pipeline -> level_map JSON -> synchronized web playback
 ```
 
-The MVP serves as a baseline sandbox to test and finalize the exact gameplay mechanics.
+Throughout this project, **SB means Supabase**.
 
-## Core User Flow
+## Current Phase
 
-```text
-[User Uploads Audio]
-        |
-        v
-[Supabase Storage Bucket] -- triggers --> [Supabase Edge Function]
-                                           |
-                                           | Audio analysis and LLM choreography
-                                           v
-[Frontend UI - Flutter] <-- fetches map -- [Supabase Database - JSON]
-```
+**Phase 1 is in progress:** keep the static GitHub Pages prototype live while adding the SB data contract, migration, and Edge Function scaffold. This gives the project a concrete surface before Flutter, hosted SB credentials, and Gemini secrets are wired in.
 
-### Upload Phase
+### Phase Plan
 
-A creator or admin uploads an ambient or calm audio file, such as `.mp3` or `.wav`, through the developer/admin dashboard.
-
-### Analysis Phase
-
-The backend processes the audio by isolating structural sections and rhythm transients, then hands this structural matrix to an LLM to generate a sequenced game layout.
-
-### Consumption Phase
-
-End users browse the available catalog in the mobile or web app, select a track, and download both the streamable audio file and its matching kinetic JSON mapping.
-
-### Interactive Phase
-
-The application uses synchronized rendering loops to generate reactive visuals that adapt fluidly to user interactions and music beats.
-
-## Technical Stack Recommendation
-
-| Component | Technology | Selection Rationale |
+| Phase | Goal | Status |
 | --- | --- | --- |
-| Cross-platform UI | Flutter 3.x / WebAssembly | Provides native cross-platform builds for iOS and Android with efficient browser rendering through Wasm. |
-| Graphics engine | Flutter Canvas + Impeller + GLSL | Custom GLSL fragment shaders bypass standard widget layouts and draw directly on the GPU for fluid simulations and fractals. |
-| Backend and database | Supabase | Provides Postgres provisioning, built-in row-level security, and a unified JavaScript/Dart SDK ecosystem. |
-| File storage | Supabase Storage | Globally distributed CDN buckets for serving high-quality audio files. |
-| Pipeline processing | Supabase Edge Functions | Globally distributed Deno/V8 isolate scripts for orchestrating third-party APIs and metadata extraction. |
-| Audio intelligence | Essentia.js WASM + Gemini Flash API | Essentia.js analyzes physical onsets and beats, while Gemini evaluates composition structure to generate clean JSON mapping. |
+| 1 | Static prototype, `level_map` contract, SB schema, deployment docs | In progress |
+| 2 | Flutter web app foundation with catalog/player routes | Planned |
+| 3 | Admin upload flow using `supabase_flutter` and SB Storage | Planned |
+| 4 | SB Edge Function synthesis pipeline with Essentia.js and Gemini Flash | Planned |
+| 5 | GitHub Actions Flutter web build and Pages deployment | Planned |
+| 6 | End-to-end MVP validation with one uploaded ready track | Planned |
 
-## Functional Requirements
+## Repository Layout
 
-### Backend and Processing Pipeline
-
-The backend synthesis pipeline is an offline process that turns uploaded audio into a playable level map.
-
-Required capabilities:
-
-- Secure upload endpoints targeting a dedicated `music-assets` Supabase Storage bucket.
-- Storage triggers that invoke a dedicated processing Edge Function.
-- Native peak detection through a compiled WebAssembly library such as Essentia.js.
-- Millisecond-accurate extraction of transient note changes and rhythm beats.
-- LLM contextual interpretation that assigns thematic changes and lanes.
-- Database synchronization that saves the resulting JSON timeline into a `tracks` table linked to the audio storage UUID.
-
-### Frontend Presentation Layer
-
-The frontend should provide synchronized playback and calming, reactive visuals across mobile and web.
-
-Required capabilities:
-
-- Audio playback synchronized with the game tick clock using precise millisecond markers rather than frame counts.
-- A custom `ShaderPainter` that passes real-time input variables to a GLSL shader canvas.
-- Idle visual state with subtle breathing color waves mapped to track BPM.
-- Active interaction state that generates smooth ripple equations from user touch coordinates.
-
-## Preliminary Data Schema
-
-### `tracks` Table
-
-```sql
-create table public.tracks (
-  id uuid default gen_random_uuid() primary key,
-  title text not null,
-  audio_url text not null,
-  bpm integer default 60,
-  level_map jsonb not null,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
+```text
+.
+├── index.html
+├── data/
+│   └── sample-level-map.json
+├── supabase/
+│   ├── migrations/
+│   │   └── 202606210001_music_flow_foundation.sql
+│   └── functions/
+│       └── process-track/
+│           └── index.ts
+└── .github/workflows/pages.yml
 ```
 
-### `level_map` Timeline Schema
+## MVP Acceptance Criteria
+
+- Uploading a valid `.mp3` or `.wav` stores the file in the SB `music-assets` bucket.
+- Uploading creates or updates a row in `public.tracks` with `processing_status = 'uploaded'` or `processing`.
+- Processing extracts timing features, asks Gemini Flash for calm choreography, validates JSON, and stores `level_map`.
+- Ready tracks are publicly readable by the frontend.
+- The published page lists ready tracks, plays audio, and renders visuals synchronized to `level_map.events[*].time_ms`.
+- GitHub Actions deploys the MVP page from `main` to GitHub Pages.
+
+## Public Data Contract
+
+### `tracks`
+
+The `tracks` table is the central content record. See [supabase/migrations/202606210001_music_flow_foundation.sql](supabase/migrations/202606210001_music_flow_foundation.sql) for the executable schema.
+
+Key fields:
+
+- `id`: UUID primary key.
+- `title`: track display title.
+- `artist`: optional creator/artist name.
+- `storage_path`: object path inside the `music-assets` bucket.
+- `audio_url`: optional public or signed playback URL.
+- `bpm`: detected or entered BPM.
+- `processing_status`: `draft`, `uploaded`, `processing`, `ready`, `failed`, or `archived`.
+- `is_published`: true when public users may read the track.
+- `level_map`: generated gameplay JSON.
+- `processing_error`: last pipeline error, if any.
+
+### `level_map`
+
+Minimum shape:
 
 ```json
 {
-  "theme": "aurora_fractal",
+  "theme": "aurora_ripple",
+  "duration_ms": 64000,
   "events": [
     {
       "time_ms": 1200,
       "action": "spawn_node",
       "lane": 2,
-      "intensity": 0.7
-    },
-    {
-      "time_ms": 2400,
-      "action": "spawn_node",
-      "lane": 1,
-      "intensity": 0.5
-    },
-    {
-      "time_ms": 4800,
-      "action": "shift_visual_state",
-      "target_color": "#2A8B9E"
+      "intensity": 0.7,
+      "color": "#65d6ca"
     }
   ]
 }
 ```
 
-## MVP Scope
+Supported MVP actions:
 
-### Included
+- `spawn_node`: creates a descending hit node.
+- `pulse_field`: adds a soft canvas pulse.
+- `shift_visual_state`: changes the target visual color or mood.
 
-- Manual upload interface for admins to process new audio tracks.
-- Working backend pipeline that processes audio into a valid `level_map` JSON object.
-- Minimalist operational frontend displaying descending hit nodes over an active fluid canvas.
-- Web browser rendering verification through Flutter Wasm.
+## SB Setup
 
-### Excluded
+Install the SB CLI, authenticate, and link this repo to the hosted Music Flow project:
 
-- Complex user profiles.
-- User level-creation tools.
-- Leaderboards, because they conflict with the calm flow goal.
-- Native multi-track audio mixing engine layers inside the client app.
-- Haptic feedback optimizations, which are reserved for post-MVP mobile refinement.
+```bash
+supabase login
+supabase link --project-ref <project-ref>
+supabase db push
+```
 
-## Open Product Direction
+Create required function secrets:
 
-The first target prototype needs a clear visual theme. Candidate directions include:
+```bash
+supabase secrets set GEMINI_API_KEY=<key>
+supabase secrets set GEMINI_MODEL=gemini-2.5-flash
+supabase secrets set SB_SERVICE_ROLE_KEY=<service-role-key>
+```
 
-- Fluid geometric fractals.
-- Soft bleeding watercolor auroras.
-- Rain-on-water ripples.
+Deploy the processing function:
+
+```bash
+supabase functions deploy process-track
+```
+
+The initial migration creates:
+
+- `music-assets` Storage bucket.
+- `track_processing_status` enum.
+- `public.tracks` table.
+- `public.ready_tracks` view.
+- RLS policies for public ready-track reads and service-role writes.
+
+## Edge Function
+
+[supabase/functions/process-track/index.ts](supabase/functions/process-track/index.ts) is the first pipeline scaffold. It accepts:
+
+```json
+{
+  "track_id": "uuid",
+  "storage_path": "optional/path.mp3"
+}
+```
+
+For Phase 1, it validates the request, marks the track as `processing`, builds a deterministic placeholder `level_map`, and marks the track `ready`. Phase 4 will replace the placeholder analysis with Essentia.js WASM and Gemini Flash choreography while preserving the same database contract.
+
+## Static Prototype
+
+The current `index.html` is the GitHub Pages prototype. It:
+
+- Loads `data/sample-level-map.json`.
+- Lets testers choose a local audio file for browser-only playback.
+- Renders descending nodes and calm canvas pulses against the loaded timeline.
+- Shows the admin upload/process flow as disabled placeholders until Phase 3.
+
+Open `index.html` directly or use the deployed GitHub Pages URL.
 
 ## GitHub Pages Publishing
 
-This repository includes a static GitHub Pages site in `index.html`.
-
-Publishing is handled by `.github/workflows/pages.yml`. On every push to `main`, GitHub Actions uploads the repository root as a Pages artifact and deploys it with GitHub Pages.
+Publishing is handled by [.github/workflows/pages.yml](.github/workflows/pages.yml). On every push to `main`, GitHub Actions uploads the repository root as a Pages artifact and deploys it.
 
 To finish setup in GitHub:
 
-1. Open the repository settings.
+1. Open repository settings.
 2. Go to Pages.
 3. Set the source to GitHub Actions.
-4. Push `main` to GitHub.
+4. Push `main`.
+
+## Next Implementation Steps
+
+1. Create the Flutter app scaffold in this repo without breaking the current Pages prototype.
+2. Add `supabase_flutter`, `just_audio`, and the first catalog/player screens.
+3. Move the static sample playback logic into Flutter models and rendering code.
+4. Build authenticated admin upload against SB Storage and `tracks`.
+5. Replace placeholder Edge Function synthesis with Essentia.js and Gemini Flash.

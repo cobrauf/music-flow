@@ -3,459 +3,719 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="Music Flow MVP product specification and publishing page.">
+    <meta name="description" content="Music Flow MVP prototype with synchronized calm rhythm visuals.">
     <title>Music Flow MVP</title>
     <style>
       :root {
         color-scheme: dark;
-        --bg: #091014;
-        --panel: rgba(8, 17, 22, 0.78);
-        --panel-soft: rgba(255, 255, 255, 0.06);
-        --text: #edf7f5;
-        --muted: #a9bfbc;
+        --bg: #081114;
+        --ink: #f2fbf8;
+        --muted: #aac0bc;
+        --panel: rgba(9, 18, 22, 0.82);
+        --panel-strong: rgba(13, 29, 33, 0.92);
         --line: rgba(255, 255, 255, 0.14);
-        --aqua: #65d6ca;
-        --gold: #e7c87a;
-        --rose: #d987a3;
+        --aqua: #66d8cb;
+        --violet: #b99cff;
+        --rose: #e58ba8;
+        --gold: #edcb7e;
+        --green: #9fdc8f;
       }
 
       * {
         box-sizing: border-box;
       }
 
-      html {
-        scroll-behavior: smooth;
-      }
-
       body {
         margin: 0;
         min-width: 320px;
-        background: var(--bg);
-        color: var(--text);
-        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        line-height: 1.6;
-      }
-
-      .scene {
-        position: fixed;
-        inset: 0;
-        z-index: -2;
         background:
-          radial-gradient(circle at 12% 18%, rgba(101, 214, 202, 0.22), transparent 34%),
-          radial-gradient(circle at 86% 12%, rgba(217, 135, 163, 0.18), transparent 30%),
-          linear-gradient(145deg, #091014 0%, #102026 46%, #150f1b 100%);
+          radial-gradient(circle at 18% 12%, rgba(102, 216, 203, 0.2), transparent 26rem),
+          radial-gradient(circle at 88% 18%, rgba(229, 139, 168, 0.15), transparent 24rem),
+          linear-gradient(145deg, #081114 0%, #132027 52%, #171225 100%);
+        color: var(--ink);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        line-height: 1.5;
       }
 
-      canvas {
-        position: fixed;
-        inset: 0;
-        z-index: -1;
-        width: 100%;
-        height: 100%;
-        opacity: 0.62;
+      button,
+      input {
+        font: inherit;
+      }
+
+      .app {
+        min-height: 100vh;
+        display: grid;
+        grid-template-rows: auto 1fr;
       }
 
       header {
-        min-height: 92vh;
-        display: grid;
-        align-items: center;
-        padding: 32px clamp(20px, 5vw, 72px);
-      }
-
-      nav {
-        position: fixed;
+        position: sticky;
         top: 0;
-        left: 0;
-        right: 0;
-        z-index: 2;
+        z-index: 5;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 20px;
-        padding: 16px clamp(20px, 5vw, 72px);
-        background: rgba(9, 16, 20, 0.76);
+        gap: 18px;
+        padding: 16px clamp(18px, 4vw, 48px);
         border-bottom: 1px solid var(--line);
+        background: rgba(8, 17, 20, 0.82);
         backdrop-filter: blur(18px);
       }
 
-      nav a {
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+      }
+
+      .mark {
+        width: 34px;
+        height: 34px;
+        border: 1px solid rgba(102, 216, 203, 0.48);
+        border-radius: 6px;
+        background:
+          linear-gradient(135deg, rgba(102, 216, 203, 0.36), transparent),
+          linear-gradient(45deg, transparent 46%, rgba(237, 203, 126, 0.9) 47%, rgba(237, 203, 126, 0.9) 53%, transparent 54%);
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: 1.05rem;
+        letter-spacing: 0;
+      }
+
+      .subhead {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .nav {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: 10px;
+      }
+
+      .nav a {
         color: var(--muted);
         text-decoration: none;
         font-size: 0.92rem;
       }
 
-      nav a:hover {
-        color: var(--text);
+      .nav a:hover {
+        color: var(--ink);
       }
 
-      .brand {
-        color: var(--text);
-        font-weight: 750;
+      main {
+        display: grid;
+        grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+        min-height: 0;
       }
 
-      .links {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: flex-end;
-        gap: 16px;
+      aside {
+        border-right: 1px solid var(--line);
+        background: rgba(7, 15, 18, 0.58);
+        padding: 22px;
       }
 
-      .hero {
-        width: min(920px, 100%);
-        padding-top: 56px;
+      .stage {
+        position: relative;
+        min-height: calc(100vh - 68px);
+        overflow: hidden;
+      }
+
+      #visualizer {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+
+      .stage-ui {
+        position: relative;
+        z-index: 2;
+        display: grid;
+        align-content: space-between;
+        min-height: calc(100vh - 68px);
+        padding: clamp(18px, 4vw, 46px);
+        pointer-events: none;
+      }
+
+      .hero-copy {
+        width: min(780px, 100%);
       }
 
       .eyebrow {
-        margin: 0 0 16px;
         color: var(--aqua);
-        font-size: 0.9rem;
-        font-weight: 700;
+        font-size: 0.78rem;
+        font-weight: 800;
         letter-spacing: 0;
         text-transform: uppercase;
       }
 
-      h1 {
-        margin: 0;
-        max-width: 760px;
-        font-size: clamp(3.2rem, 10vw, 8.2rem);
-        line-height: 0.9;
+      .hero-copy h2 {
+        margin-top: 10px;
+        font-size: clamp(2.6rem, 8vw, 7rem);
+        line-height: 0.92;
         letter-spacing: 0;
       }
 
-      .lede {
-        max-width: 700px;
-        margin: 28px 0 0;
+      .hero-copy p {
+        width: min(650px, 100%);
+        margin-top: 18px;
         color: var(--muted);
-        font-size: clamp(1.1rem, 2vw, 1.35rem);
+        font-size: clamp(1rem, 2vw, 1.18rem);
       }
 
-      .actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        margin-top: 34px;
+      .readout {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(110px, 1fr));
+        gap: 10px;
+        width: min(720px, 100%);
+      }
+
+      .metric,
+      .panel,
+      .track {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+      }
+
+      .metric {
+        padding: 12px;
+        min-height: 72px;
+      }
+
+      .metric span {
+        display: block;
+        color: var(--muted);
+        font-size: 0.75rem;
+        text-transform: uppercase;
+      }
+
+      .metric strong {
+        display: block;
+        margin-top: 4px;
+        font-size: 1.1rem;
+      }
+
+      .panel {
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+
+      .panel h3 {
+        font-size: 1rem;
+      }
+
+      .panel p {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+
+      .track-list {
+        display: grid;
+        gap: 10px;
+        margin-top: 12px;
+      }
+
+      .track {
+        width: 100%;
+        padding: 12px;
+        color: var(--ink);
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .track[aria-selected="true"] {
+        border-color: rgba(102, 216, 203, 0.7);
+        background: rgba(102, 216, 203, 0.12);
+      }
+
+      .track strong,
+      .track span {
+        display: block;
+      }
+
+      .track span {
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 0.84rem;
+      }
+
+      .controls {
+        display: grid;
+        gap: 10px;
       }
 
       .button {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        min-height: 44px;
-        padding: 10px 16px;
+        min-height: 42px;
+        padding: 9px 13px;
         border: 1px solid var(--line);
         border-radius: 6px;
-        color: var(--text);
+        color: var(--ink);
         background: rgba(255, 255, 255, 0.08);
         text-decoration: none;
-        font-weight: 700;
+        font-weight: 750;
+        cursor: pointer;
       }
 
       .button.primary {
-        border-color: rgba(101, 214, 202, 0.44);
-        background: rgba(101, 214, 202, 0.16);
+        border-color: rgba(102, 216, 203, 0.5);
+        background: rgba(102, 216, 203, 0.16);
       }
 
-      main {
-        background: rgba(9, 16, 20, 0.86);
-        border-top: 1px solid var(--line);
+      .button:disabled {
+        color: rgba(242, 251, 248, 0.46);
+        cursor: not-allowed;
       }
 
-      section {
-        padding: 72px clamp(20px, 5vw, 72px);
-      }
-
-      .content {
-        width: min(1100px, 100%);
-        margin: 0 auto;
-      }
-
-      h2 {
-        margin: 0 0 18px;
-        font-size: clamp(2rem, 4vw, 3.3rem);
-        line-height: 1.05;
-        letter-spacing: 0;
-      }
-
-      h3 {
-        margin: 0 0 10px;
-        font-size: 1.08rem;
-        letter-spacing: 0;
-      }
-
-      p {
-        margin: 0 0 18px;
-      }
-
-      .muted {
-        color: var(--muted);
-      }
-
-      .flow {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 12px;
-        margin-top: 28px;
-      }
-
-      .step,
-      .stack li,
-      .scope li {
+      .file {
+        width: 100%;
+        min-height: 42px;
+        padding: 9px;
         border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--panel-soft);
+        border-radius: 6px;
+        color: var(--muted);
+        background: rgba(255, 255, 255, 0.06);
       }
 
-      .step {
-        min-height: 128px;
-        padding: 18px;
+      .timeline {
+        height: 8px;
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
       }
 
-      .step span {
+      .timeline span {
         display: block;
-        color: var(--gold);
-        font-size: 0.82rem;
-        font-weight: 750;
-        text-transform: uppercase;
+        width: 0%;
+        height: 100%;
+        background: linear-gradient(90deg, var(--aqua), var(--gold), var(--rose));
       }
 
-      .grid {
+      .contract {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 18px;
-        margin-top: 28px;
-      }
-
-      .stack,
-      .scope {
-        display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 12px;
+        gap: 8px;
+        margin-top: 12px;
         padding: 0;
-        margin: 28px 0 0;
         list-style: none;
       }
 
-      .stack li,
-      .scope li {
-        padding: 16px;
-      }
-
-      .tag {
-        color: var(--rose);
-        font-weight: 750;
-      }
-
-      pre {
-        overflow: auto;
-        margin: 24px 0 0;
-        padding: 18px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: rgba(0, 0, 0, 0.32);
-        color: #e7f9f6;
-      }
-
-      code {
-        font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+      .contract li {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        color: var(--muted);
         font-size: 0.9rem;
       }
 
-      footer {
-        padding: 32px clamp(20px, 5vw, 72px);
-        color: var(--muted);
-        border-top: 1px solid var(--line);
-        background: rgba(0, 0, 0, 0.24);
+      .contract strong {
+        color: var(--ink);
+        font-weight: 750;
       }
 
-      @media (max-width: 860px) {
-        nav {
+      @media (max-width: 920px) {
+        header {
           align-items: flex-start;
           flex-direction: column;
-          gap: 8px;
         }
 
-        .links {
-          justify-content: flex-start;
-        }
-
-        .flow,
-        .grid,
-        .stack,
-        .scope {
+        main {
           grid-template-columns: 1fr;
         }
 
-        header {
-          min-height: 86vh;
+        aside {
+          border-right: 0;
+          border-bottom: 1px solid var(--line);
+        }
+
+        .stage,
+        .stage-ui {
+          min-height: 720px;
+        }
+
+        .readout {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
         }
       }
     </style>
   </head>
   <body>
-    <div class="scene" aria-hidden="true"></div>
-    <canvas id="field" aria-hidden="true"></canvas>
-
-    <nav aria-label="Primary">
-      <a class="brand" href="#">Music Flow</a>
-      <div class="links">
-        <a href="#flow">Flow</a>
-        <a href="#stack">Stack</a>
-        <a href="#scope">Scope</a>
-        <a href="README.md">README</a>
-      </div>
-    </nav>
-
-    <header>
-      <div class="hero">
-        <p class="eyebrow">MVP Specification</p>
-        <h1>Music Flow</h1>
-        <p class="lede">
-          An interactive mobile and web audio-visual experience designed to guide users into a calm flow state through rhythmic interaction and reactive tranquil art.
-        </p>
-        <div class="actions">
-          <a class="button primary" href="#flow">View Product Flow</a>
-          <a class="button" href="README.md">Read Full PRD</a>
-        </div>
-      </div>
-    </header>
-
-    <main>
-      <section id="flow">
-        <div class="content">
-          <h2>Operational Pipeline</h2>
-          <p class="muted">
-            The MVP proves the full path from uploaded audio to generated gameplay data and synchronized visual rendering.
-          </p>
-          <div class="flow">
-            <article class="step">
-              <span>01</span>
-              <h3>Audio Upload</h3>
-              <p class="muted">Admins upload ambient `.mp3` or `.wav` tracks to Supabase Storage.</p>
-            </article>
-            <article class="step">
-              <span>02</span>
-              <h3>Audio Analysis</h3>
-              <p class="muted">Edge Functions extract beats, transients, and structural sections.</p>
-            </article>
-            <article class="step">
-              <span>03</span>
-              <h3>LLM Choreography</h3>
-              <p class="muted">Gemini interprets composition structure and produces a sequenced level map.</p>
-            </article>
-            <article class="step">
-              <span>04</span>
-              <h3>Reactive Playback</h3>
-              <p class="muted">Flutter renders synchronized hit nodes and fluid shader visuals.</p>
-            </article>
-          </div>
-        </div>
-      </section>
-
-      <section id="stack">
-        <div class="content">
-          <h2>Recommended Stack</h2>
-          <ul class="stack">
-            <li><span class="tag">UI</span><br>Flutter 3.x and WebAssembly</li>
-            <li><span class="tag">Graphics</span><br>Flutter Canvas, Impeller, and GLSL</li>
-            <li><span class="tag">Backend</span><br>Supabase Postgres and Edge Functions</li>
-            <li><span class="tag">Storage</span><br>Supabase Storage CDN buckets</li>
-            <li><span class="tag">Analysis</span><br>Essentia.js compiled to WASM</li>
-            <li><span class="tag">Choreography</span><br>Gemini Flash API for JSON mapping</li>
-          </ul>
-        </div>
-      </section>
-
-      <section>
-        <div class="content grid">
+    <div class="app">
+      <header>
+        <div class="brand">
+          <div class="mark" aria-hidden="true"></div>
           <div>
-            <h2>Data Shape</h2>
-            <p class="muted">
-              Tracks persist streamable audio metadata alongside a generated rhythmic timeline.
-            </p>
+            <h1>Music Flow</h1>
+            <p class="subhead">Phase 1 web prototype and SB contract</p>
           </div>
-          <pre><code>{
-  "theme": "aurora_fractal",
-  "events": [
-    { "time_ms": 1200, "action": "spawn_node", "lane": 2 },
-    { "time_ms": 4800, "action": "shift_visual_state" }
-  ]
-}</code></pre>
         </div>
-      </section>
+        <nav class="nav" aria-label="Primary">
+          <a href="README.md">README</a>
+          <a href="data/sample-level-map.json">Sample Map</a>
+          <a href="supabase/migrations/202606210001_music_flow_foundation.sql">SB Schema</a>
+        </nav>
+      </header>
 
-      <section id="scope">
-        <div class="content">
-          <h2>MVP Scope</h2>
-          <ul class="scope">
-            <li>Manual admin upload interface for processing new audio tracks.</li>
-            <li>Backend pipeline that produces valid `level_map` JSON.</li>
-            <li>Minimal frontend with descending hit nodes over a fluid canvas.</li>
-            <li>Flutter Wasm browser rendering verification.</li>
-            <li>No complex profiles, creator tools, leaderboards, or client-side multi-track mixing.</li>
-            <li>Haptic feedback is reserved for post-MVP mobile refinement.</li>
-          </ul>
-        </div>
-      </section>
-    </main>
+      <main>
+        <aside>
+          <section class="panel" aria-labelledby="catalog-title">
+            <h3 id="catalog-title">Ready Tracks</h3>
+            <p>Phase 1 loads a local sample map. Phase 2 will replace this list with ready rows from SB.</p>
+            <div class="track-list">
+              <button class="track" type="button" aria-selected="true">
+                <strong>Aurora Timing Study</strong>
+                <span>Sample level_map - 72 BPM - aurora_ripple</span>
+              </button>
+            </div>
+          </section>
 
-    <footer>
-      Music Flow MVP publishing page. Full source lives in the repository README.
-    </footer>
+          <section class="panel" aria-labelledby="playback-title">
+            <h3 id="playback-title">Playback Test</h3>
+            <p>Choose any local `.mp3` or `.wav` to test synchronized browser playback. The file stays on this device.</p>
+            <div class="controls">
+              <input class="file" id="audio-file" type="file" accept="audio/mpeg,audio/wav,audio/mp3,.mp3,.wav">
+              <button class="button primary" id="play" type="button" disabled>Play</button>
+              <button class="button" id="pause" type="button" disabled>Pause</button>
+              <div class="timeline" aria-hidden="true"><span id="progress"></span></div>
+            </div>
+          </section>
+
+          <section class="panel" aria-labelledby="admin-title">
+            <h3 id="admin-title">Admin Flow</h3>
+            <p>Upload and process controls are intentionally staged until SB Auth, Storage, and `supabase_flutter` are wired.</p>
+            <div class="controls">
+              <button class="button" type="button" disabled>Upload to music-assets</button>
+              <button class="button" type="button" disabled>Process Track</button>
+            </div>
+          </section>
+
+          <section class="panel" aria-labelledby="contract-title">
+            <h3 id="contract-title">Contract</h3>
+            <ul class="contract">
+              <li><span>Storage</span><strong>music-assets</strong></li>
+              <li><span>Table</span><strong>tracks</strong></li>
+              <li><span>Status</span><strong id="status">loading</strong></li>
+              <li><span>Events</span><strong id="event-count">0</strong></li>
+            </ul>
+          </section>
+        </aside>
+
+        <section class="stage" aria-label="Music reactive visualizer">
+          <canvas id="visualizer"></canvas>
+          <div class="stage-ui">
+            <div class="hero-copy">
+              <p class="eyebrow">Published MVP Surface</p>
+              <h2>Calm rhythm, visible timing.</h2>
+              <p>
+                The prototype renders descending hit nodes and soft field pulses from the same `level_map` contract the SB pipeline will write.
+              </p>
+            </div>
+
+            <div class="readout" aria-label="Playback metrics">
+              <div class="metric"><span>Time</span><strong id="time">0 ms</strong></div>
+              <div class="metric"><span>BPM</span><strong id="bpm">--</strong></div>
+              <div class="metric"><span>Theme</span><strong id="theme">--</strong></div>
+              <div class="metric"><span>Action</span><strong id="action">idle</strong></div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <audio id="audio"></audio>
 
     <script>
-      const canvas = document.getElementById("field");
+      const state = {
+        map: { theme: "loading", bpm: 72, duration_ms: 64000, events: [] },
+        nodes: [],
+        pulses: [],
+        nextEventIndex: 0,
+        startedAt: 0,
+        pausedAt: 0,
+        isPlaying: false,
+        lastAction: "idle",
+        hue: { r: 102, g: 216, b: 203 }
+      };
+
+      const canvas = document.getElementById("visualizer");
       const ctx = canvas.getContext("2d");
-      const points = Array.from({ length: 54 }, (_, index) => ({
-        x: Math.random(),
-        y: Math.random(),
-        r: 1.5 + Math.random() * 3.5,
-        phase: index * 0.37,
-        speed: 0.0018 + Math.random() * 0.0016
-      }));
+      const audio = document.getElementById("audio");
+      const audioFile = document.getElementById("audio-file");
+      const playButton = document.getElementById("play");
+      const pauseButton = document.getElementById("pause");
+      const progress = document.getElementById("progress");
+      const timeLabel = document.getElementById("time");
+      const bpmLabel = document.getElementById("bpm");
+      const themeLabel = document.getElementById("theme");
+      const actionLabel = document.getElementById("action");
+      const statusLabel = document.getElementById("status");
+      const eventCountLabel = document.getElementById("event-count");
 
       function resize() {
         const ratio = window.devicePixelRatio || 1;
-        canvas.width = Math.floor(window.innerWidth * ratio);
-        canvas.height = Math.floor(window.innerHeight * ratio);
+        canvas.width = Math.floor(canvas.clientWidth * ratio);
+        canvas.height = Math.floor(canvas.clientHeight * ratio);
         ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
       }
 
-      function draw(time) {
-        const width = window.innerWidth;
-        const height = window.innerHeight;
-        ctx.clearRect(0, 0, width, height);
-        ctx.lineWidth = 1;
-
-        for (const point of points) {
-          const x = point.x * width + Math.sin(time * point.speed + point.phase) * 34;
-          const y = point.y * height + Math.cos(time * point.speed * 0.8 + point.phase) * 28;
-          const radius = point.r + Math.sin(time * 0.002 + point.phase) * 0.8;
-          ctx.beginPath();
-          ctx.arc(x, y, radius, 0, Math.PI * 2);
-          ctx.fillStyle = "rgba(101, 214, 202, 0.42)";
-          ctx.fill();
+      function playbackMs(now) {
+        if (audio.duration > 0) {
+          return Math.floor(audio.currentTime * 1000);
         }
 
-        for (let index = 0; index < points.length - 1; index += 1) {
-          const a = points[index];
-          const b = points[index + 1];
-          const ax = a.x * width + Math.sin(time * a.speed + a.phase) * 34;
-          const ay = a.y * height + Math.cos(time * a.speed * 0.8 + a.phase) * 28;
-          const bx = b.x * width + Math.sin(time * b.speed + b.phase) * 34;
-          const by = b.y * height + Math.cos(time * b.speed * 0.8 + b.phase) * 28;
-          ctx.beginPath();
-          ctx.moveTo(ax, ay);
-          ctx.lineTo(bx, by);
-          ctx.strokeStyle = index % 3 === 0 ? "rgba(231, 200, 122, 0.18)" : "rgba(101, 214, 202, 0.13)";
-          ctx.stroke();
+        if (state.isPlaying) {
+          return Math.floor(state.pausedAt + now - state.startedAt);
+        }
+
+        return Math.floor(state.pausedAt);
+      }
+
+      function resetTimeline() {
+        state.nodes = [];
+        state.pulses = [];
+        state.nextEventIndex = 0;
+        state.pausedAt = 0;
+        state.startedAt = performance.now();
+        state.lastAction = "idle";
+      }
+
+      function handleEvent(event) {
+        state.lastAction = event.action;
+
+        if (event.action === "spawn_node") {
+          state.nodes.push({
+            lane: Number(event.lane || 0),
+            born: event.time_ms,
+            intensity: Number(event.intensity || 0.5),
+            color: event.color || "#66d8cb"
+          });
+        }
+
+        if (event.action === "pulse_field") {
+          state.pulses.push({
+            born: event.time_ms,
+            intensity: Number(event.intensity || 0.5),
+            color: event.color || "#edcb7e"
+          });
+        }
+
+        if (event.action === "shift_visual_state" && event.target_color) {
+          const parsed = parseColor(event.target_color);
+          if (parsed) {
+            state.hue = parsed;
+          }
+        }
+      }
+
+      function parseColor(hex) {
+        const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+        if (!match) return null;
+        return {
+          r: parseInt(match[1], 16),
+          g: parseInt(match[2], 16),
+          b: parseInt(match[3], 16)
+        };
+      }
+
+      function draw(now) {
+        const width = canvas.clientWidth;
+        const height = canvas.clientHeight;
+        const ms = playbackMs(now);
+        const duration = audio.duration > 0 ? audio.duration * 1000 : state.map.duration_ms;
+        const beat = Math.sin((ms / 60000) * state.map.bpm * Math.PI * 2);
+
+        while (
+          state.nextEventIndex < state.map.events.length &&
+          state.map.events[state.nextEventIndex].time_ms <= ms
+        ) {
+          handleEvent(state.map.events[state.nextEventIndex]);
+          state.nextEventIndex += 1;
+        }
+
+        ctx.clearRect(0, 0, width, height);
+        const gradient = ctx.createLinearGradient(0, 0, width, height);
+        gradient.addColorStop(0, `rgba(${state.hue.r}, ${state.hue.g}, ${state.hue.b}, 0.26)`);
+        gradient.addColorStop(0.55, "rgba(11, 22, 27, 0.96)");
+        gradient.addColorStop(1, "rgba(23, 18, 37, 0.94)");
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, width, height);
+
+        drawFluidField(width, height, ms, beat);
+        drawPulses(width, height, ms);
+        drawLanes(width, height);
+        drawNodes(width, height, ms);
+
+        timeLabel.textContent = `${ms} ms`;
+        bpmLabel.textContent = String(state.map.bpm);
+        themeLabel.textContent = state.map.theme;
+        actionLabel.textContent = state.lastAction;
+        progress.style.width = `${Math.min(100, (ms / duration) * 100)}%`;
+
+        if (state.isPlaying && ms >= duration) {
+          state.isPlaying = false;
+          state.pausedAt = 0;
+          if (!audio.paused) audio.pause();
+          audio.currentTime = 0;
+          resetTimeline();
         }
 
         requestAnimationFrame(draw);
       }
 
+      function drawFluidField(width, height, ms, beat) {
+        const rows = 9;
+        ctx.lineWidth = 1;
+        for (let row = 0; row < rows; row += 1) {
+          const y = (height / (rows + 1)) * (row + 1);
+          ctx.beginPath();
+          for (let x = -20; x <= width + 20; x += 20) {
+            const wave = Math.sin(x * 0.012 + ms * 0.0012 + row) * (18 + beat * 4);
+            const drift = Math.cos(ms * 0.0007 + row * 0.8) * 16;
+            if (x === -20) {
+              ctx.moveTo(x, y + wave + drift);
+            } else {
+              ctx.lineTo(x, y + wave + drift);
+            }
+          }
+          ctx.strokeStyle = row % 2 === 0 ? "rgba(102, 216, 203, 0.16)" : "rgba(185, 156, 255, 0.12)";
+          ctx.stroke();
+        }
+      }
+
+      function drawLanes(width, height) {
+        const laneCount = 4;
+        const laneWidth = Math.min(90, width / 7);
+        const start = width / 2 - (laneWidth * laneCount) / 2;
+        ctx.lineWidth = 1;
+        for (let lane = 0; lane <= laneCount; lane += 1) {
+          const x = start + lane * laneWidth;
+          ctx.beginPath();
+          ctx.moveTo(x, height * 0.18);
+          ctx.lineTo(x, height * 0.9);
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.09)";
+          ctx.stroke();
+        }
+        ctx.fillStyle = "rgba(237, 203, 126, 0.18)";
+        ctx.fillRect(start, height * 0.84, laneWidth * laneCount, 3);
+      }
+
+      function drawNodes(width, height, ms) {
+        const laneCount = 4;
+        const laneWidth = Math.min(90, width / 7);
+        const start = width / 2 - (laneWidth * laneCount) / 2;
+        const travelMs = 2800;
+
+        state.nodes = state.nodes.filter((node) => ms - node.born < travelMs + 500);
+        for (const node of state.nodes) {
+          const age = ms - node.born;
+          const t = Math.max(0, Math.min(1, age / travelMs));
+          const x = start + (Math.max(0, Math.min(laneCount - 1, node.lane)) + 0.5) * laneWidth;
+          const y = height * 0.16 + t * (height * 0.7);
+          const radius = 10 + node.intensity * 11;
+
+          ctx.beginPath();
+          ctx.arc(x, y, radius, 0, Math.PI * 2);
+          ctx.fillStyle = node.color;
+          ctx.globalAlpha = 0.78;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+
+          ctx.beginPath();
+          ctx.arc(x, y, radius + 8, 0, Math.PI * 2);
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.28)";
+          ctx.stroke();
+        }
+      }
+
+      function drawPulses(width, height, ms) {
+        state.pulses = state.pulses.filter((pulse) => ms - pulse.born < 1800);
+        for (const pulse of state.pulses) {
+          const age = ms - pulse.born;
+          const t = age / 1800;
+          ctx.beginPath();
+          ctx.arc(width * 0.5, height * 0.48, 80 + t * Math.max(width, height) * 0.42, 0, Math.PI * 2);
+          ctx.strokeStyle = pulse.color;
+          ctx.globalAlpha = (1 - t) * 0.28 * pulse.intensity;
+          ctx.lineWidth = 3;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+      }
+
+      async function loadMap() {
+        try {
+          const response = await fetch("data/sample-level-map.json");
+          state.map = await response.json();
+          state.map.events.sort((a, b) => a.time_ms - b.time_ms);
+          statusLabel.textContent = "ready";
+        } catch (error) {
+          statusLabel.textContent = "offline";
+          state.map = fallbackMap();
+        }
+
+        eventCountLabel.textContent = String(state.map.events.length);
+        bpmLabel.textContent = String(state.map.bpm);
+        themeLabel.textContent = state.map.theme;
+      }
+
+      function fallbackMap() {
+        return {
+          theme: "aurora_ripple",
+          bpm: 72,
+          duration_ms: 32000,
+          events: Array.from({ length: 24 }, (_, index) => ({
+            time_ms: 900 + index * 1100,
+            action: index % 5 === 0 ? "pulse_field" : "spawn_node",
+            lane: index % 4,
+            intensity: 0.45 + (index % 3) * 0.18,
+            color: index % 2 === 0 ? "#66d8cb" : "#edcb7e"
+          }))
+        };
+      }
+
+      audioFile.addEventListener("change", () => {
+        const file = audioFile.files && audioFile.files[0];
+        if (!file) return;
+        audio.src = URL.createObjectURL(file);
+        playButton.disabled = false;
+        pauseButton.disabled = false;
+        resetTimeline();
+      });
+
+      playButton.addEventListener("click", async () => {
+        state.isPlaying = true;
+        state.startedAt = performance.now();
+        if (audio.src) {
+          await audio.play();
+        }
+      });
+
+      pauseButton.addEventListener("click", () => {
+        state.pausedAt = playbackMs(performance.now());
+        state.isPlaying = false;
+        audio.pause();
+      });
+
       window.addEventListener("resize", resize);
       resize();
-      requestAnimationFrame(draw);
+      loadMap().then(() => requestAnimationFrame(draw));
     </script>
   </body>
 </html>
