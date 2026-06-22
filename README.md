@@ -152,7 +152,7 @@ The current `index.html` is the GitHub Pages prototype. It:
 - Estimates duration, BPM, and onset peaks locally with the Web Audio API before upload processing.
 - Creates a matching `tracks` row and invokes the deployed `process-track` Edge Function.
 - Provides a mobile-first 4x6 tappable region grid that plays soft pentatonic Web Audio tones over the track.
-- Includes a frontend-only Interaction Tests panel with a tracing mode that turns uploaded coloring-page-style images into traceable patterns and gates music playback by pointer speed.
+- Includes a frontend-only Interaction Tests panel with tracing and coloring modes: tracing turns uploaded coloring-page-style images into traceable patterns, while coloring starts from a white page and restores uploaded image color with a freeform blotchy watercolor-style brush. Both gate music playback by mode-specific pointer speed controls.
 - Renders descending nodes and calm canvas pulses against the loaded timeline.
 
 Open `index.html` directly or use the deployed GitHub Pages URL.

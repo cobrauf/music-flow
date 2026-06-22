@@ -462,6 +462,10 @@
         font-weight: 800;
       }
 
+      .mode-controls[hidden] {
+        display: none;
+      }
+
       input[type="range"] {
         width: 100%;
         accent-color: var(--aqua);
@@ -625,58 +629,98 @@
                   <select class="input" id="interaction-mode">
                     <option value="off">Off</option>
                     <option value="tracing">Tracing</option>
+                    <option value="coloring">Coloring</option>
                   </select>
                 </label>
                 <label>
-                  Trace pattern
+                  Interaction image
                   <input class="file" id="trace-pattern-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif,.png,.jpg,.jpeg,.webp,.gif">
                 </label>
-                <label>
-                  Minimum speed
-                  <div class="slider-row">
-                    <input id="trace-min-speed" type="range" min="1" max="10" value="1">
-                    <span id="trace-min-speed-value">1</span>
-                  </div>
-                </label>
-                <label>
-                  Maximum speed
-                  <div class="slider-row">
-                    <input id="trace-max-speed" type="range" min="2" max="50" value="10">
-                    <span id="trace-max-speed-value">10</span>
-                  </div>
-                </label>
-                <label>
-                  Coloring page opacity
-                  <div class="slider-row">
-                    <input id="trace-opacity" type="range" min="10" max="100" value="20">
-                    <span id="trace-opacity-value">20%</span>
-                  </div>
-                </label>
-                <label>
-                  Trace zoom
-                  <div class="slider-row">
-                    <input id="trace-zoom" type="range" min="1" max="4" step="0.25" value="4">
-                    <span id="trace-zoom-value">4x</span>
-                  </div>
-                </label>
-                <label>
-                  Highlight color
-                  <input class="input" id="trace-highlight-color" type="color" value="#ffdf40">
-                </label>
-                <label>
-                  Highlight brightness
-                  <div class="slider-row">
-                    <input id="trace-highlight-brightness" type="range" min="25" max="160" value="100">
-                    <span id="trace-highlight-brightness-value">100%</span>
-                  </div>
-                </label>
-                <label>
-                  Trace threshold
-                  <div class="slider-row">
-                    <input id="trace-threshold" type="range" min="4" max="80" value="28">
-                    <span id="trace-threshold-value">28 px</span>
-                  </div>
-                </label>
+                <div class="mode-controls" id="trace-controls" hidden>
+                  <label>
+                    Trace minimum speed
+                    <div class="slider-row">
+                      <input id="trace-min-speed" type="range" min="1" max="10" value="1">
+                      <span id="trace-min-speed-value">1</span>
+                    </div>
+                  </label>
+                  <label>
+                    Trace maximum speed
+                    <div class="slider-row">
+                      <input id="trace-max-speed" type="range" min="2" max="50" value="10">
+                      <span id="trace-max-speed-value">10</span>
+                    </div>
+                  </label>
+                  <label>
+                    Trace page opacity
+                    <div class="slider-row">
+                      <input id="trace-opacity" type="range" min="10" max="100" value="20">
+                      <span id="trace-opacity-value">20%</span>
+                    </div>
+                  </label>
+                  <label>
+                    Trace zoom
+                    <div class="slider-row">
+                      <input id="trace-zoom" type="range" min="1" max="4" step="0.25" value="4">
+                      <span id="trace-zoom-value">4x</span>
+                    </div>
+                  </label>
+                  <label>
+                    Highlight color
+                    <input class="input" id="trace-highlight-color" type="color" value="#ffdf40">
+                  </label>
+                  <label>
+                    Highlight brightness
+                    <div class="slider-row">
+                      <input id="trace-highlight-brightness" type="range" min="25" max="160" value="100">
+                      <span id="trace-highlight-brightness-value">100%</span>
+                    </div>
+                  </label>
+                  <label>
+                    Trace threshold
+                    <div class="slider-row">
+                      <input id="trace-threshold" type="range" min="4" max="80" value="28">
+                      <span id="trace-threshold-value">28 px</span>
+                    </div>
+                  </label>
+                </div>
+                <div class="mode-controls" id="color-controls" hidden>
+                  <label>
+                    Color minimum speed
+                    <div class="slider-row">
+                      <input id="color-min-speed" type="range" min="1" max="10" value="1">
+                      <span id="color-min-speed-value">1</span>
+                    </div>
+                  </label>
+                  <label>
+                    Color maximum speed
+                    <div class="slider-row">
+                      <input id="color-max-speed" type="range" min="2" max="50" value="10">
+                      <span id="color-max-speed-value">10</span>
+                    </div>
+                  </label>
+                  <label>
+                    Color zoom
+                    <div class="slider-row">
+                      <input id="color-zoom" type="range" min="1" max="4" step="0.25" value="4">
+                      <span id="color-zoom-value">4x</span>
+                    </div>
+                  </label>
+                  <label>
+                    Watercolor brush size
+                    <div class="slider-row">
+                      <input id="color-brush-size" type="range" min="8" max="120" value="42">
+                      <span id="color-brush-size-value">42 px</span>
+                    </div>
+                  </label>
+                  <label>
+                    Blotchiness
+                    <div class="slider-row">
+                      <input id="color-blotchiness" type="range" min="0" max="100" value="62">
+                      <span id="color-blotchiness-value">62%</span>
+                    </div>
+                  </label>
+                </div>
                 <p class="status-note" id="trace-status">Upload a pattern.</p>
               </div>
             </div>
@@ -753,15 +797,28 @@
         lastAction: "idle",
         musicVolume: 0.85,
         tapVolume: 0.9,
+        audioFade: {
+          level: 1,
+          target: 1,
+          frame: null,
+          done: null
+        },
         hue: { r: 102, g: 216, b: 203 },
         trace: {
           mode: "off",
           image: null,
+          traceImage: null,
+          grayscaleImage: null,
+          colorImage: null,
+          colorSourceData: null,
           outlineMask: null,
+          traceOutlineMask: null,
           highlight: null,
           highlightCtx: null,
           highlightTint: null,
           highlightTintCtx: null,
+          repaint: null,
+          repaintCtx: null,
           hotspot: null,
           hotspotCtx: null,
           highlightDirty: false,
@@ -776,9 +833,20 @@
           smoothedSpeed: 0,
           minSpeed: 10,
           maxSpeed: 100,
+          colorMinSpeed: 10,
+          colorMaxSpeed: 100,
           opacity: 0.2,
           zoom: 4,
+          traceZoom: 4,
+          colorZoom: 4,
           defaultZoom: 4,
+          colorBrushSize: 42,
+          colorBlotchiness: 0.62,
+          panX: 0,
+          panY: 0,
+          isPanning: false,
+          panPointerId: null,
+          panStart: null,
           highlightColor: "#ffdf40",
           highlightBrightness: 1,
           threshold: 28,
@@ -818,14 +886,26 @@
       const tapVolumeValue = document.getElementById("tap-volume-value");
       const interactionModeInput = document.getElementById("interaction-mode");
       const tracePatternFile = document.getElementById("trace-pattern-file");
+      const traceControls = document.getElementById("trace-controls");
+      const colorControls = document.getElementById("color-controls");
       const traceMinSpeedInput = document.getElementById("trace-min-speed");
       const traceMaxSpeedInput = document.getElementById("trace-max-speed");
       const traceMinSpeedValue = document.getElementById("trace-min-speed-value");
       const traceMaxSpeedValue = document.getElementById("trace-max-speed-value");
+      const colorMinSpeedInput = document.getElementById("color-min-speed");
+      const colorMaxSpeedInput = document.getElementById("color-max-speed");
+      const colorMinSpeedValue = document.getElementById("color-min-speed-value");
+      const colorMaxSpeedValue = document.getElementById("color-max-speed-value");
       const traceOpacityInput = document.getElementById("trace-opacity");
       const traceOpacityValue = document.getElementById("trace-opacity-value");
       const traceZoomInput = document.getElementById("trace-zoom");
       const traceZoomValue = document.getElementById("trace-zoom-value");
+      const colorZoomInput = document.getElementById("color-zoom");
+      const colorZoomValue = document.getElementById("color-zoom-value");
+      const colorBrushSizeInput = document.getElementById("color-brush-size");
+      const colorBrushSizeValue = document.getElementById("color-brush-size-value");
+      const colorBlotchinessInput = document.getElementById("color-blotchiness");
+      const colorBlotchinessValue = document.getElementById("color-blotchiness-value");
       const traceHighlightColorInput = document.getElementById("trace-highlight-color");
       const traceHighlightBrightnessInput = document.getElementById("trace-highlight-brightness");
       const traceHighlightBrightnessValue = document.getElementById("trace-highlight-brightness-value");
@@ -880,7 +960,7 @@
       }
 
       function applySoundSettings() {
-        audio.volume = state.musicVolume;
+        updateAudioVolume();
         musicVolumeValue.textContent = `${Math.round(state.musicVolume * 100)}%`;
         tapVolumeValue.textContent = `${Math.round(state.tapVolume * 100)}%`;
         if (synth.master) {
@@ -888,6 +968,70 @@
         }
         localStorage.setItem(storage.musicVolume, String(state.musicVolume));
         localStorage.setItem(storage.tapVolume, String(state.tapVolume));
+      }
+
+      function updateAudioVolume() {
+        audio.volume = Math.max(0, Math.min(1, state.musicVolume * state.audioFade.level));
+      }
+
+      function fadeAudioTo(target, duration = 180, onDone = null) {
+        target = Math.max(0, Math.min(1, target));
+        if (state.audioFade.frame && state.audioFade.target === target) return;
+        if (state.audioFade.frame) {
+          cancelAnimationFrame(state.audioFade.frame);
+          state.audioFade.frame = null;
+        }
+
+        const startLevel = state.audioFade.level;
+        const startedAt = performance.now();
+        state.audioFade.target = target;
+        state.audioFade.done = onDone;
+
+        const step = (now) => {
+          const progress = Math.min(1, (now - startedAt) / duration);
+          const eased = 1 - (1 - progress) ** 3;
+          state.audioFade.level = startLevel + (target - startLevel) * eased;
+          updateAudioVolume();
+
+          if (progress < 1) {
+            state.audioFade.frame = requestAnimationFrame(step);
+            return;
+          }
+
+          state.audioFade.level = target;
+          state.audioFade.frame = null;
+          updateAudioVolume();
+          const done = state.audioFade.done;
+          state.audioFade.done = null;
+          if (done) done();
+        };
+
+        state.audioFade.frame = requestAnimationFrame(step);
+      }
+
+      function resetAudioFade() {
+        if (state.audioFade.frame) {
+          cancelAnimationFrame(state.audioFade.frame);
+          state.audioFade.frame = null;
+        }
+        state.audioFade.level = 1;
+        state.audioFade.target = 1;
+        state.audioFade.done = null;
+        updateAudioVolume();
+      }
+
+      function fadeOutAudioForTraceGate() {
+        if (audio.paused) return;
+        state.trace.wasPausedByGate = true;
+        fadeAudioTo(0, 180, () => {
+          if (state.trace.gate !== "good" && state.isPlaying && !audio.paused) {
+            audio.pause();
+          }
+        });
+      }
+
+      function fadeInAudioForTraceGate() {
+        fadeAudioTo(1, 240);
       }
 
       function playbackMs(now) {
@@ -920,6 +1064,7 @@
         state.map = map;
         state.hue = { r: 102, g: 216, b: 203 };
         state.trace.wasPausedByGate = false;
+        resetAudioFade();
         resetTimeline();
 
         if (track.audio_url) {
@@ -952,10 +1097,10 @@
         traceStatus.textContent = "Processing pattern...";
 
         const image = await loadImageFromFile(file);
-        const processed = processTraceImage(image);
+        const processed = processInteractionImage(image);
 
         installTracePattern(processed, file.name);
-        await saveCachedTracePattern(file, processed.canvas);
+        await saveCachedTracePattern(file, processed.traceCanvas);
       }
 
       function installTracePattern(processed, patternName) {
@@ -964,12 +1109,19 @@
         }
 
         state.trace.imageUrl = "";
-        state.trace.image = processed.canvas;
-        state.trace.outlineMask = processed.outlineMask;
-        state.trace.highlight = createTraceHighlightCanvas(processed.canvas.width, processed.canvas.height);
+        state.trace.traceImage = processed.traceCanvas;
+        state.trace.grayscaleImage = processed.grayscaleCanvas || processed.traceCanvas;
+        state.trace.colorImage = processed.colorCanvas || null;
+        state.trace.colorSourceData = processed.colorSourceData || null;
+        state.trace.traceOutlineMask = processed.outlineMask;
+        state.trace.image = null;
+        state.trace.outlineMask = null;
+        state.trace.highlight = createTraceHighlightCanvas(processed.traceCanvas.width, processed.traceCanvas.height);
         state.trace.highlightCtx = state.trace.highlight.getContext("2d", { willReadFrequently: true });
-        state.trace.highlightTint = createTraceHighlightCanvas(processed.canvas.width, processed.canvas.height);
+        state.trace.highlightTint = createTraceHighlightCanvas(processed.traceCanvas.width, processed.traceCanvas.height);
         state.trace.highlightTintCtx = state.trace.highlightTint.getContext("2d", { willReadFrequently: true });
+        state.trace.repaint = createTraceHighlightCanvas(processed.traceCanvas.width, processed.traceCanvas.height);
+        state.trace.repaintCtx = state.trace.repaint.getContext("2d", { willReadFrequently: true });
         state.trace.hotspot = createTraceHighlightCanvas(1, 1);
         state.trace.hotspotCtx = state.trace.hotspot.getContext("2d", { willReadFrequently: true });
         state.trace.highlightDirty = true;
@@ -980,6 +1132,7 @@
         state.trace.lastGoodPoint = null;
         state.trace.gate = "ready";
         state.trace.wasPausedByGate = false;
+        syncTraceModeAssets();
         setTraceGate("ready");
       }
 
@@ -1096,36 +1249,42 @@
       async function loadCachedTracePattern() {
         try {
           const record = await readTraceCacheRecord();
-          if (!record || !record.processedBlob) return;
+          if (!record || (!record.originalBlob && !record.processedBlob)) return;
 
-          const image = await loadImageFromBlob(record.processedBlob);
-          const processed = processedTraceFromImage(image);
+          const image = await loadImageFromBlob(record.originalBlob || record.processedBlob);
+          const processed = record.originalBlob ? processInteractionImage(image) : processedTraceFromImage(image);
           installTracePattern(processed, record.name || "Cached pattern");
         } catch (error) {
           console.warn("Unable to restore cached trace pattern.", error);
         }
       }
 
-      function processTraceImage(image) {
+      function processInteractionImage(image) {
         const maxSize = 1000;
         const scale = Math.min(1, maxSize / Math.max(image.naturalWidth || image.width, image.naturalHeight || image.height));
         const width = Math.max(1, Math.round((image.naturalWidth || image.width) * scale));
         const height = Math.max(1, Math.round((image.naturalHeight || image.height) * scale));
         const source = document.createElement("canvas");
         const sourceCtx = source.getContext("2d", { willReadFrequently: true });
-        const output = document.createElement("canvas");
-        const outputCtx = output.getContext("2d");
+        const traceOutput = document.createElement("canvas");
+        const traceOutputCtx = traceOutput.getContext("2d");
+        const grayscaleOutput = document.createElement("canvas");
+        const grayscaleOutputCtx = grayscaleOutput.getContext("2d");
 
         source.width = width;
         source.height = height;
-        output.width = width;
-        output.height = height;
+        traceOutput.width = width;
+        traceOutput.height = height;
+        grayscaleOutput.width = width;
+        grayscaleOutput.height = height;
         sourceCtx.drawImage(image, 0, 0, width, height);
 
         const imageData = sourceCtx.getImageData(0, 0, width, height);
         const pixels = imageData.data;
-        const outputData = outputCtx.createImageData(width, height);
-        const outputPixels = outputData.data;
+        const traceData = traceOutputCtx.createImageData(width, height);
+        const tracePixels = traceData.data;
+        const grayscaleData = grayscaleOutputCtx.createImageData(width, height);
+        const grayscalePixels = grayscaleData.data;
 
         for (let index = 0; index < pixels.length; index += 4) {
           const red = pixels[index];
@@ -1134,22 +1293,35 @@
           const alpha = pixels[index + 3];
           const luminance = red * 0.299 + green * 0.587 + blue * 0.114;
           const isOutline = alpha > 16 && luminance < 172;
+          const paperTone = Math.min(250, Math.max(32, Math.round(luminance * 0.92 + 18)));
 
           if (isOutline) {
-            outputPixels[index] = 5;
-            outputPixels[index + 1] = 12;
-            outputPixels[index + 2] = 14;
-            outputPixels[index + 3] = 236;
+            tracePixels[index] = 5;
+            tracePixels[index + 1] = 12;
+            tracePixels[index + 2] = 14;
+            tracePixels[index + 3] = 236;
           } else {
-            outputPixels[index] = 242;
-            outputPixels[index + 1] = 251;
-            outputPixels[index + 2] = 248;
-            outputPixels[index + 3] = alpha > 16 ? 46 : 0;
+            tracePixels[index] = 242;
+            tracePixels[index + 1] = 251;
+            tracePixels[index + 2] = 248;
+            tracePixels[index + 3] = alpha > 16 ? 46 : 0;
           }
+
+          grayscalePixels[index] = paperTone;
+          grayscalePixels[index + 1] = paperTone;
+          grayscalePixels[index + 2] = Math.min(255, paperTone + 3);
+          grayscalePixels[index + 3] = alpha;
         }
 
-        outputCtx.putImageData(outputData, 0, 0);
-        return { canvas: output, outlineMask: outputData };
+        traceOutputCtx.putImageData(traceData, 0, 0);
+        grayscaleOutputCtx.putImageData(grayscaleData, 0, 0);
+        return {
+          traceCanvas: traceOutput,
+          grayscaleCanvas: grayscaleOutput,
+          colorCanvas: source,
+          colorSourceData: imageData,
+          outlineMask: traceData
+        };
       }
 
       function processedTraceFromImage(image) {
@@ -1163,7 +1335,10 @@
         canvasCtx.drawImage(image, 0, 0, width, height);
 
         return {
-          canvas: canvasElement,
+          traceCanvas: canvasElement,
+          grayscaleCanvas: canvasElement,
+          colorCanvas: null,
+          colorSourceData: null,
           outlineMask: canvasCtx.getImageData(0, 0, width, height)
         };
       }
@@ -1297,6 +1472,7 @@
           audio.currentTime = 0;
           resetTimeline();
           state.trace.wasPausedByGate = false;
+          resetAudioFade();
           playToggleButton.textContent = "Play";
         }
 
@@ -1304,11 +1480,22 @@
       }
 
       function isTracingReady() {
-        return state.trace.mode === "tracing" && Boolean(state.trace.image);
+        if (isColoringMode()) {
+          return Boolean(state.trace.image && state.trace.colorSourceData && state.trace.repaint);
+        }
+        return isTraceInteractionMode() && Boolean(state.trace.image);
       }
 
       function isTracingMode() {
-        return state.trace.mode === "tracing";
+        return isTraceInteractionMode();
+      }
+
+      function isTraceInteractionMode() {
+        return state.trace.mode === "tracing" || state.trace.mode === "coloring";
+      }
+
+      function isColoringMode() {
+        return state.trace.mode === "coloring";
       }
 
       function isTraceZoomAtDefault() {
@@ -1317,6 +1504,37 @@
 
       function isTracingInputEnabled() {
         return isTracingReady() && isTraceZoomAtDefault();
+      }
+
+      function syncTraceModeAssets() {
+        if (isColoringMode()) {
+          state.trace.image = state.trace.grayscaleImage || state.trace.traceImage;
+          state.trace.outlineMask = null;
+          state.trace.zoom = state.trace.colorZoom;
+        } else {
+          state.trace.image = state.trace.traceImage;
+          state.trace.outlineMask = state.trace.traceOutlineMask;
+          state.trace.zoom = state.trace.traceZoom;
+        }
+        updateInteractionControlVisibility();
+        state.trace.bounds = null;
+      }
+
+      function updateInteractionControlVisibility() {
+        traceControls.hidden = state.trace.mode !== "tracing";
+        colorControls.hidden = state.trace.mode !== "coloring";
+      }
+
+      function getActiveMinSpeed() {
+        return isColoringMode() ? state.trace.colorMinSpeed : state.trace.minSpeed;
+      }
+
+      function getActiveMaxSpeed() {
+        return isColoringMode() ? state.trace.colorMaxSpeed : state.trace.maxSpeed;
+      }
+
+      function getActiveBrushSize() {
+        return isColoringMode() ? state.trace.colorBrushSize : state.trace.threshold;
       }
 
       function getTraceBounds(width, height) {
@@ -1328,9 +1546,28 @@
         const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight) * state.trace.zoom;
         const drawWidth = sourceWidth * scale;
         const drawHeight = sourceHeight * scale;
-        const x = (width - drawWidth) / 2;
-        const y = Math.max(34, (height - reservedBottom - drawHeight) / 2);
+        const centeredX = (width - drawWidth) / 2;
+        const centeredY = Math.max(34, (height - reservedBottom - drawHeight) / 2);
+        const clampedPan = clampTracePan(state.trace.panX, state.trace.panY, width, height, drawWidth, drawHeight, reservedBottom);
+        state.trace.panX = clampedPan.x;
+        state.trace.panY = clampedPan.y;
+        const x = centeredX + state.trace.panX;
+        const y = centeredY + state.trace.panY;
         return { x, y, width: drawWidth, height: drawHeight, scale };
+      }
+
+      function clampTracePan(panX, panY, stageWidth, stageHeight, drawWidth, drawHeight, reservedBottom = 132) {
+        const viewportTop = 24;
+        const viewportBottom = Math.max(viewportTop + 160, stageHeight - reservedBottom + 28);
+        const viewportHeight = viewportBottom - viewportTop;
+        const margin = 36;
+        const maxPanX = Math.max(0, (drawWidth - stageWidth) / 2 + margin);
+        const maxPanY = Math.max(0, (drawHeight - viewportHeight) / 2 + margin);
+
+        return {
+          x: Math.max(-maxPanX, Math.min(maxPanX, panX)),
+          y: Math.max(-maxPanY, Math.min(maxPanY, panY))
+        };
       }
 
       function ensureTraceBounds() {
@@ -1346,17 +1583,34 @@
         state.trace.bounds = bounds;
 
         ctx.save();
-        ctx.globalAlpha = state.trace.opacity;
-        ctx.drawImage(state.trace.image, bounds.x, bounds.y, bounds.width, bounds.height);
+        if (isColoringMode()) {
+          const paper = ctx.createLinearGradient(bounds.x, bounds.y, bounds.x + bounds.width, bounds.y + bounds.height);
+          paper.addColorStop(0, "rgba(255, 255, 250, 0.99)");
+          paper.addColorStop(1, "rgba(246, 248, 242, 0.99)");
+          ctx.fillStyle = paper;
+          ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+        } else {
+          ctx.globalAlpha = state.trace.opacity;
+          ctx.drawImage(state.trace.image, bounds.x, bounds.y, bounds.width, bounds.height);
+        }
         ctx.restore();
 
-        renderTraceHighlightTint();
-        if (state.trace.highlightTint) {
-          ctx.save();
-          ctx.drawImage(state.trace.highlightTint, bounds.x, bounds.y, bounds.width, bounds.height);
-          ctx.restore();
+        if (isColoringMode()) {
+          if (state.trace.repaint) {
+            ctx.save();
+            ctx.globalCompositeOperation = "source-over";
+            ctx.drawImage(state.trace.repaint, bounds.x, bounds.y, bounds.width, bounds.height);
+            ctx.restore();
+          }
+        } else {
+          renderTraceHighlightTint();
+          if (state.trace.highlightTint) {
+            ctx.save();
+            ctx.drawImage(state.trace.highlightTint, bounds.x, bounds.y, bounds.width, bounds.height);
+            ctx.restore();
+          }
+          drawTraceHotspot();
         }
-        drawTraceHotspot();
         drawTraceTouchGlow(now);
         drawTraceZoomDisabledOverlay(width, height);
 
@@ -1377,7 +1631,7 @@
         ctx.font = "800 15px Inter, system-ui, sans-serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(`Tracing disabled at ${formatTraceZoom(state.trace.zoom)}. Zoom to ${formatTraceZoom(state.trace.defaultZoom)} to trace.`, width / 2, Math.max(72, height * 0.14));
+        ctx.fillText(`${isColoringMode() ? "Coloring" : "Tracing"} disabled at ${formatTraceZoom(state.trace.zoom)}. Zoom to ${formatTraceZoom(state.trace.defaultZoom)} to paint.`, width / 2, Math.max(72, height * 0.14));
         ctx.restore();
       }
 
@@ -1475,7 +1729,11 @@
         const point = state.trace.lastPoint;
         const color = state.trace.gate === "off" || state.trace.gate === "fast"
           ? { r: 229, g: 139, b: 168 }
-          : (hexToRgb(state.trace.highlightColor) || { r: 237, g: 203, b: 126 });
+          : (isColoringMode() ? sampleColorAtPoint(point) : null) || (hexToRgb(state.trace.highlightColor) || { r: 237, g: 203, b: 126 });
+        if (isColoringMode()) {
+          drawWatercolorBrushPreview(now, point, color);
+          return;
+        }
         const pulse = 0.5 + Math.sin(now / 110) * 0.5;
         const radius = 28 + pulse * 10;
         const glow = ctx.createRadialGradient(point.x, point.y, 2, point.x, point.y, radius);
@@ -1493,6 +1751,46 @@
         ctx.beginPath();
         ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.95)`;
+        ctx.fill();
+        ctx.restore();
+      }
+
+      function drawWatercolorBrushPreview(now, point, color) {
+        const phase = now / 170;
+        const pulse = 0.5 + Math.sin(now / 120) * 0.5;
+        const radius = Math.max(14, getActiveBrushSize() * (0.76 + pulse * 0.08));
+        const segments = 42;
+
+        ctx.save();
+        ctx.globalCompositeOperation = "screen";
+        ctx.beginPath();
+        for (let index = 0; index <= segments; index += 1) {
+          const angle = (index / segments) * Math.PI * 2;
+          const wave = 1
+            + Math.sin(angle * 5 + phase) * 0.13
+            + Math.sin(angle * 8 - phase * 0.8) * 0.08
+            + (watercolorNoise(index * 13.7, Math.round(phase * 10)) - 0.5) * 0.12 * state.trace.colorBlotchiness;
+          const x = point.x + Math.cos(angle) * radius * wave;
+          const y = point.y + Math.sin(angle) * radius * wave;
+          if (index === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+        ctx.closePath();
+        ctx.fillStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.14)`;
+        ctx.fill();
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = `rgba(${color.r}, ${color.g}, ${color.b}, 0.62)`;
+        ctx.stroke();
+
+        const glow = ctx.createRadialGradient(point.x, point.y, 1, point.x, point.y, radius * 1.15);
+        glow.addColorStop(0, `rgba(${color.r}, ${color.g}, ${color.b}, 0.34)`);
+        glow.addColorStop(1, `rgba(${color.r}, ${color.g}, ${color.b}, 0)`);
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, radius * 1.15, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
       }
@@ -1673,7 +1971,8 @@
         const smoothedSpeed = state.trace.smoothedSpeed
           ? state.trace.smoothedSpeed * 0.72 + instantSpeed * 0.28
           : instantSpeed;
-        const gate = isTracePointNearOutline(point) ? classifyTraceSpeed(smoothedSpeed) : "off";
+        const isPaintable = isColoringMode() ? isTracePointInsideImage(point) : isTracePointNearOutline(point);
+        const gate = isPaintable ? classifyTraceSpeed(smoothedSpeed) : "off";
 
         state.trace.smoothedSpeed = smoothedSpeed;
         state.trace.activePath.points.push({ ...point, gate });
@@ -1681,7 +1980,11 @@
         setTraceGate(gate);
         if (gate === "good") {
           state.trace.lastGoodPoint = point;
-          highlightTraceBetween(previous, point);
+          if (isColoringMode()) {
+            repaintColorBetween(previous, point);
+          } else {
+            highlightTraceBetween(previous, point);
+          }
         }
       }
 
@@ -1698,8 +2001,26 @@
         }
       }
 
+      function repaintColorBetween(startPoint, endPoint) {
+        const distance = Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y);
+        const steps = Math.max(1, Math.ceil(distance / 10));
+
+        for (let step = 0; step <= steps; step += 1) {
+          const t = step / steps;
+          stampWatercolorRepaint(
+            startPoint.x + (endPoint.x - startPoint.x) * t,
+            startPoint.y + (endPoint.y - startPoint.y) * t
+          );
+        }
+      }
+
       function isTracePointNearOutline(point) {
         return hasOutlineNearPoint(point.x, point.y, state.trace.threshold);
+      }
+
+      function isTracePointInsideImage(point) {
+        const search = getTraceImageSearch(point.x, point.y, 1);
+        return Boolean(search);
       }
 
       function hasOutlineNearPoint(screenX, screenY, screenRadius) {
@@ -1760,6 +2081,64 @@
         state.trace.highlightDirty = changed || state.trace.highlightDirty;
       }
 
+      function stampWatercolorRepaint(screenX, screenY) {
+        if (!state.trace.repaintCtx || !state.trace.colorSourceData) return;
+
+        const search = getTraceImageSearch(screenX, screenY, getActiveBrushSize());
+        if (!search) return;
+
+        const { left, top, width, height, imageX, imageY, radius } = search;
+        const repaintData = state.trace.repaintCtx.getImageData(left, top, width, height);
+        const repaintPixels = repaintData.data;
+        const sourcePixels = state.trace.colorSourceData.data;
+        const sourceWidth = state.trace.colorSourceData.width;
+        const blotchiness = state.trace.colorBlotchiness;
+        const phase = performance.now() / 170 + watercolorNoise(imageX * 3.1, imageY * 2.7) * Math.PI * 2;
+
+        for (let y = 0; y < height; y += 1) {
+          for (let x = 0; x < width; x += 1) {
+            const absoluteX = left + x;
+            const absoluteY = top + y;
+            const dx = absoluteX - imageX;
+            const dy = absoluteY - imageY;
+            const angle = Math.atan2(dy, dx);
+            const noise = watercolorNoise(absoluteX * 0.74 + phase * 11, absoluteY * 0.74 - phase * 7);
+            const tide = watercolorNoise(absoluteX * 0.22 + imageX + phase * 5, absoluteY * 0.22 + imageY);
+            const wave = 1
+              + Math.sin(angle * 5 + phase) * 0.13
+              + Math.sin(angle * 9 - phase * 0.73) * 0.08
+              + (noise - 0.5) * 0.28 * blotchiness;
+            const shapedRadius = radius * Math.max(0.62, wave);
+            const distance = Math.hypot(dx, dy) / shapedRadius;
+            if (distance > 1) continue;
+
+            const feather = Math.max(0, 1 - distance);
+            if (distance > 0.62 && noise < 0.22 + blotchiness * 0.24) continue;
+
+            const sourceIndex = (absoluteY * sourceWidth + absoluteX) * 4;
+            const sourceAlpha = sourcePixels[sourceIndex + 3] / 255;
+            if (sourceAlpha <= 0.04) continue;
+
+            const wetEdge = distance > 0.7 ? 1.18 + blotchiness * 0.34 : 0.72;
+            const bloom = Math.max(0, 1 - Math.abs(distance - 0.74) * 4.5) * blotchiness;
+            const wash = Math.min(1, Math.max(0, (feather * 0.74 + bloom * 0.22) * (0.32 + noise * 0.5 + tide * 0.28) * wetEdge));
+            const targetAlpha = Math.round(255 * Math.min(0.94, wash * sourceAlpha));
+            if (targetAlpha <= 4) continue;
+
+            const outputIndex = (y * width + x) * 4;
+            const existingAlpha = repaintPixels[outputIndex + 3];
+            const pigmentLift = 0.88 + tide * 0.2;
+            const blend = Math.min(1, targetAlpha / 255 + 0.14);
+            repaintPixels[outputIndex] = Math.round(repaintPixels[outputIndex] * (1 - blend) + Math.min(255, sourcePixels[sourceIndex] * pigmentLift) * blend);
+            repaintPixels[outputIndex + 1] = Math.round(repaintPixels[outputIndex + 1] * (1 - blend) + Math.min(255, sourcePixels[sourceIndex + 1] * pigmentLift) * blend);
+            repaintPixels[outputIndex + 2] = Math.round(repaintPixels[outputIndex + 2] * (1 - blend) + Math.min(255, sourcePixels[sourceIndex + 2] * pigmentLift) * blend);
+            repaintPixels[outputIndex + 3] = Math.max(existingAlpha, targetAlpha);
+          }
+        }
+
+        state.trace.repaintCtx.putImageData(repaintData, left, top);
+      }
+
       function getTraceOutlineSearch(screenX, screenY, screenRadius) {
         if (!state.trace.outlineMask || !state.trace.highlight) return null;
 
@@ -1802,6 +2181,62 @@
         };
       }
 
+      function getTraceImageSearch(screenX, screenY, screenRadius) {
+        const targetCanvas = isColoringMode() ? state.trace.repaint : state.trace.highlight;
+        if (!targetCanvas) return null;
+
+        if (!state.trace.bounds) {
+          ensureTraceBounds();
+        }
+        if (!state.trace.bounds) return null;
+
+        const bounds = state.trace.bounds;
+        const imageX = Math.round((screenX - bounds.x) / bounds.scale);
+        const imageY = Math.round((screenY - bounds.y) / bounds.scale);
+        const radius = Math.max(1, Math.round(screenRadius / bounds.scale));
+        if (
+          imageX < 0 ||
+          imageX >= targetCanvas.width ||
+          imageY < 0 ||
+          imageY >= targetCanvas.height
+        ) {
+          return null;
+        }
+
+        const left = Math.max(0, imageX - radius);
+        const top = Math.max(0, imageY - radius);
+        const right = Math.min(targetCanvas.width, imageX + radius + 1);
+        const bottom = Math.min(targetCanvas.height, imageY + radius + 1);
+        const width = right - left;
+        const height = bottom - top;
+        if (width <= 0 || height <= 0) return null;
+
+        return { left, top, width, height, imageX, imageY, radius };
+      }
+
+      function watercolorNoise(x, y) {
+        const raw = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
+        return raw - Math.floor(raw);
+      }
+
+      function sampleColorAtPoint(point) {
+        if (!state.trace.colorSourceData || !state.trace.bounds) return null;
+        const bounds = state.trace.bounds;
+        const imageX = Math.round((point.x - bounds.x) / bounds.scale);
+        const imageY = Math.round((point.y - bounds.y) / bounds.scale);
+        if (
+          imageX < 0 ||
+          imageX >= state.trace.colorSourceData.width ||
+          imageY < 0 ||
+          imageY >= state.trace.colorSourceData.height
+        ) {
+          return null;
+        }
+        const index = (imageY * state.trace.colorSourceData.width + imageX) * 4;
+        const pixels = state.trace.colorSourceData.data;
+        return { r: pixels[index], g: pixels[index + 1], b: pixels[index + 2] };
+      }
+
       function hexToRgb(hex) {
         const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
         if (!match) return null;
@@ -1814,6 +2249,144 @@
 
       function formatTraceZoom(zoom) {
         return `${Number(zoom).toFixed(2).replace(/\.?0+$/, "")}x`;
+      }
+
+      function getActiveZoomInput() {
+        return isColoringMode() ? colorZoomInput : traceZoomInput;
+      }
+
+      function getActiveZoomValue() {
+        return isColoringMode() ? colorZoomValue : traceZoomValue;
+      }
+
+      function setTraceZoom(nextZoom, anchor = null) {
+        const zoomInput = getActiveZoomInput();
+        const zoomValue = getActiveZoomValue();
+        const minZoom = Number(zoomInput.min);
+        const maxZoom = Number(zoomInput.max);
+        const zoom = Math.max(minZoom, Math.min(maxZoom, nextZoom));
+        const previousBounds = ensureTraceBounds();
+        const anchorPoint = anchor || {
+          x: canvas.clientWidth / 2,
+          y: Math.max(80, (canvas.clientHeight - 132) / 2)
+        };
+        const imageAnchor = previousBounds
+          ? {
+              x: (anchorPoint.x - previousBounds.x) / previousBounds.scale,
+              y: (anchorPoint.y - previousBounds.y) / previousBounds.scale
+            }
+          : null;
+
+        state.trace.zoom = zoom;
+        if (isColoringMode()) {
+          state.trace.colorZoom = zoom;
+        } else {
+          state.trace.traceZoom = zoom;
+        }
+        zoomInput.value = String(zoom);
+        zoomValue.textContent = formatTraceZoom(state.trace.zoom);
+
+        if (imageAnchor && state.trace.image) {
+          const sourceWidth = state.trace.image.width || 1;
+          const sourceHeight = state.trace.image.height || 1;
+          const stageWidth = canvas.clientWidth;
+          const stageHeight = canvas.clientHeight;
+          const reservedBottom = 132;
+          const maxWidth = stageWidth * 0.86;
+          const maxHeight = Math.max(180, (stageHeight - reservedBottom) * 0.74);
+          const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight) * state.trace.zoom;
+          const drawWidth = sourceWidth * scale;
+          const drawHeight = sourceHeight * scale;
+          const centeredX = (stageWidth - drawWidth) / 2;
+          const centeredY = Math.max(34, (stageHeight - reservedBottom - drawHeight) / 2);
+          const pan = clampTracePan(
+            anchorPoint.x - imageAnchor.x * scale - centeredX,
+            anchorPoint.y - imageAnchor.y * scale - centeredY,
+            stageWidth,
+            stageHeight,
+            drawWidth,
+            drawHeight,
+            reservedBottom
+          );
+          state.trace.panX = pan.x;
+          state.trace.panY = pan.y;
+        }
+
+        state.trace.bounds = null;
+        if (isTracingReady()) {
+          setTraceGate(isTraceZoomAtDefault() ? "ready" : "zoom");
+        } else {
+          updateTraceStatus("ready");
+        }
+      }
+
+      function panTraceBy(deltaX, deltaY) {
+        if (!isTracingReady()) return;
+        ensureTraceBounds();
+        const bounds = state.trace.bounds;
+        if (!bounds) return;
+        const pan = clampTracePan(
+          state.trace.panX + deltaX,
+          state.trace.panY + deltaY,
+          canvas.clientWidth,
+          canvas.clientHeight,
+          bounds.width,
+          bounds.height
+        );
+        state.trace.panX = pan.x;
+        state.trace.panY = pan.y;
+        state.trace.bounds = null;
+      }
+
+      function shouldPanTrace(event) {
+        if (!isTracingReady()) return false;
+        return !isTraceZoomAtDefault() || event.button === 1 || event.button === 2;
+      }
+
+      function startTracePan(event) {
+        state.trace.isPanning = true;
+        state.trace.panPointerId = event.pointerId;
+        state.trace.panStart = {
+          x: event.clientX,
+          y: event.clientY
+        };
+        state.trace.isPointerDown = false;
+        state.trace.activePath = null;
+        state.trace.lastPoint = null;
+        state.trace.smoothedSpeed = 0;
+        setTraceGate(isTraceZoomAtDefault() ? "ready" : "zoom");
+      }
+
+      function continueTracePan(event) {
+        if (!state.trace.isPanning || state.trace.panPointerId !== event.pointerId || !state.trace.panStart) return false;
+        const deltaX = event.clientX - state.trace.panStart.x;
+        const deltaY = event.clientY - state.trace.panStart.y;
+        state.trace.panStart = {
+          x: event.clientX,
+          y: event.clientY
+        };
+        panTraceBy(deltaX, deltaY);
+        return true;
+      }
+
+      function endTracePan(event) {
+        if (event && state.trace.panPointerId !== event.pointerId) return;
+        state.trace.isPanning = false;
+        state.trace.panPointerId = null;
+        state.trace.panStart = null;
+      }
+
+      function handleTraceWheel(event) {
+        if (!isTracingReady()) return;
+        event.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const anchor = {
+          x: event.clientX - rect.left,
+          y: event.clientY - rect.top
+        };
+        const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
+        const factor = Math.exp(-delta * 0.0018);
+        setTraceZoom(state.trace.zoom * factor, anchor);
       }
 
       function endTracing() {
@@ -1836,8 +2409,8 @@
       }
 
       function classifyTraceSpeed(speed) {
-        if (speed < state.trace.minSpeed) return "slow";
-        if (speed > state.trace.maxSpeed) return "fast";
+        if (speed < getActiveMinSpeed()) return "slow";
+        if (speed > getActiveMaxSpeed()) return "fast";
         return "good";
       }
 
@@ -1852,22 +2425,27 @@
         if (!isTracingReady() || !state.isPlaying || !audio.src) return;
 
         if (gate !== "good") {
-          if (!audio.paused) {
-            audio.pause();
-            state.trace.wasPausedByGate = true;
-          }
+          fadeOutAudioForTraceGate();
           return;
         }
 
-        if (gate === "good" && state.trace.wasPausedByGate && audio.paused) {
+        if (gate === "good" && state.trace.wasPausedByGate) {
           state.trace.wasPausedByGate = false;
           resumeAudioAfterTraceGate();
         }
       }
 
       function resumeAudioAfterTraceGate() {
-        if (state.trace.resumePromise || !audio.src) return;
+        if (!audio.src) return;
+        if (!audio.paused) {
+          fadeInAudioForTraceGate();
+          return;
+        }
+        if (state.trace.resumePromise) return;
         state.trace.resumePromise = audio.play()
+          .then(() => {
+            fadeInAudioForTraceGate();
+          })
           .catch(() => {
             state.trace.wasPausedByGate = true;
           })
@@ -1879,19 +2457,25 @@
       function updateTraceStatus(gate = state.trace.gate) {
         traceStatus.classList.remove("good", "warn", "hot");
 
-        if (state.trace.mode !== "tracing") {
-          traceStatus.textContent = "Tracing off.";
+        if (!isTraceInteractionMode()) {
+          traceStatus.textContent = "Interaction test off.";
+          return;
+        }
+
+        if (isColoringMode() && !state.trace.colorSourceData) {
+          traceStatus.textContent = "Upload a color image.";
+          traceStatus.classList.add("warn");
           return;
         }
 
         if (!state.trace.image) {
-          traceStatus.textContent = "Upload a pattern.";
+          traceStatus.textContent = "Upload an image.";
           traceStatus.classList.add("warn");
           return;
         }
 
         if (!isTraceZoomAtDefault()) {
-          traceStatus.textContent = `Tracing disabled. Zoom to ${formatTraceZoom(state.trace.defaultZoom)}.`;
+          traceStatus.textContent = `${isColoringMode() ? "Coloring" : "Tracing"} disabled. Zoom to ${formatTraceZoom(state.trace.defaultZoom)}.`;
           traceStatus.classList.add("warn");
           return;
         }
@@ -1915,12 +2499,12 @@
         }
 
         if (gate === "off") {
-          traceStatus.textContent = "Off pattern.";
+          traceStatus.textContent = isColoringMode() ? "Off image." : "Off pattern.";
           traceStatus.classList.add("hot");
           return;
         }
 
-        traceStatus.textContent = "Trace to play.";
+        traceStatus.textContent = isColoringMode() ? "Color to play." : "Trace to play.";
       }
 
       function getGridBounds(width, height) {
@@ -2373,6 +2957,7 @@
         audio.src = URL.createObjectURL(file);
         playToggleButton.disabled = false;
         nowTitle.textContent = file.name;
+        resetAudioFade();
         resetTimeline();
       });
 
@@ -2408,15 +2993,47 @@
       interactionModeInput.addEventListener("change", () => {
         state.trace.mode = interactionModeInput.value;
         state.trace.wasPausedByGate = false;
+        syncTraceModeAssets();
         if (isTracingReady()) {
           setTraceGate("ready");
           return;
         }
-        if (state.trace.mode !== "tracing" && state.isPlaying && audio.src && audio.paused) {
+        if (!isTraceInteractionMode()) {
+          resetAudioFade();
+        }
+        if (!isTraceInteractionMode() && state.isPlaying && audio.src && audio.paused) {
           resumeAudioAfterTraceGate();
         }
         updateTraceStatus("ready");
       });
+
+      function bindSpeedControls(minInput, maxInput, minValueLabel, maxValueLabel, setMinSpeed, setMaxSpeed) {
+        minInput.addEventListener("input", () => {
+          const minValue = Number(minInput.value);
+          let maxValue = Number(maxInput.value);
+          setMinSpeed(minValue * 10);
+          if (minValue >= maxValue) {
+            maxValue = Math.min(Number(maxInput.max), Math.max(Number(maxInput.min), minValue + 1));
+            maxInput.value = String(maxValue);
+            setMaxSpeed(maxValue * 10);
+          }
+          minValueLabel.textContent = String(minValue);
+          maxValueLabel.textContent = maxInput.value;
+        });
+
+        maxInput.addEventListener("input", () => {
+          const maxValue = Number(maxInput.value);
+          let minValue = Number(minInput.value);
+          setMaxSpeed(maxValue * 10);
+          if (maxValue <= minValue) {
+            minValue = Math.max(Number(minInput.min), Math.min(Number(minInput.max), maxValue - 1));
+            minInput.value = String(minValue);
+            setMinSpeed(minValue * 10);
+          }
+          minValueLabel.textContent = minInput.value;
+          maxValueLabel.textContent = String(maxValue);
+        });
+      }
 
       tracePatternFile.addEventListener("change", async () => {
         const file = tracePatternFile.files && tracePatternFile.files[0];
@@ -2429,29 +3046,23 @@
         }
       });
 
-      traceMinSpeedInput.addEventListener("input", () => {
-        const minValue = Number(traceMinSpeedInput.value);
-        state.trace.minSpeed = minValue * 10;
-        if (state.trace.minSpeed >= state.trace.maxSpeed) {
-          const nextMaxValue = Math.min(Number(traceMaxSpeedInput.max), Math.max(Number(traceMaxSpeedInput.min), minValue + 1));
-          traceMaxSpeedInput.value = String(nextMaxValue);
-          state.trace.maxSpeed = nextMaxValue * 10;
-        }
-        traceMinSpeedValue.textContent = String(minValue);
-        traceMaxSpeedValue.textContent = traceMaxSpeedInput.value;
-      });
+      bindSpeedControls(
+        traceMinSpeedInput,
+        traceMaxSpeedInput,
+        traceMinSpeedValue,
+        traceMaxSpeedValue,
+        (value) => { state.trace.minSpeed = value; },
+        (value) => { state.trace.maxSpeed = value; }
+      );
 
-      traceMaxSpeedInput.addEventListener("input", () => {
-        const maxValue = Number(traceMaxSpeedInput.value);
-        state.trace.maxSpeed = maxValue * 10;
-        if (state.trace.maxSpeed <= state.trace.minSpeed) {
-          const nextMinValue = Math.max(Number(traceMinSpeedInput.min), Math.min(Number(traceMinSpeedInput.max), maxValue - 1));
-          traceMinSpeedInput.value = String(nextMinValue);
-          state.trace.minSpeed = nextMinValue * 10;
-        }
-        traceMinSpeedValue.textContent = traceMinSpeedInput.value;
-        traceMaxSpeedValue.textContent = String(maxValue);
-      });
+      bindSpeedControls(
+        colorMinSpeedInput,
+        colorMaxSpeedInput,
+        colorMinSpeedValue,
+        colorMaxSpeedValue,
+        (value) => { state.trace.colorMinSpeed = value; },
+        (value) => { state.trace.colorMaxSpeed = value; }
+      );
 
       traceOpacityInput.addEventListener("input", () => {
         state.trace.opacity = Number(traceOpacityInput.value) / 100;
@@ -2459,14 +3070,11 @@
       });
 
       traceZoomInput.addEventListener("input", () => {
-        state.trace.zoom = Number(traceZoomInput.value);
-        traceZoomValue.textContent = formatTraceZoom(state.trace.zoom);
-        state.trace.bounds = null;
-        if (isTracingReady()) {
-          setTraceGate(isTraceZoomAtDefault() ? "ready" : "zoom");
-        } else {
-          updateTraceStatus("ready");
-        }
+        setTraceZoom(Number(traceZoomInput.value));
+      });
+
+      colorZoomInput.addEventListener("input", () => {
+        setTraceZoom(Number(colorZoomInput.value));
       });
 
       traceHighlightColorInput.addEventListener("input", () => {
@@ -2485,12 +3093,23 @@
         traceThresholdValue.textContent = `${traceThresholdInput.value} px`;
       });
 
+      colorBrushSizeInput.addEventListener("input", () => {
+        state.trace.colorBrushSize = Number(colorBrushSizeInput.value);
+        colorBrushSizeValue.textContent = `${colorBrushSizeInput.value} px`;
+      });
+
+      colorBlotchinessInput.addEventListener("input", () => {
+        state.trace.colorBlotchiness = Number(colorBlotchinessInput.value) / 100;
+        colorBlotchinessValue.textContent = `${colorBlotchinessInput.value}%`;
+      });
+
       playToggleButton.addEventListener("click", async () => {
         if (state.isPlaying) {
           state.pausedAt = playbackMs(performance.now());
           state.isPlaying = false;
           audio.pause();
           state.trace.wasPausedByGate = false;
+          resetAudioFade();
           playToggleButton.textContent = "Play";
           return;
         }
@@ -2498,6 +3117,12 @@
         state.isPlaying = true;
         state.startedAt = performance.now();
         playToggleButton.textContent = "Pause";
+        resetAudioFade();
+        if (isTracingReady() && state.trace.gate !== "good") {
+          state.audioFade.level = 0;
+          state.audioFade.target = 0;
+          updateAudioVolume();
+        }
         if (audio.src) {
           await audio.play();
         }
@@ -2508,6 +3133,11 @@
 
       canvas.addEventListener("pointerdown", (event) => {
         canvas.setPointerCapture(event.pointerId);
+        if (shouldPanTrace(event)) {
+          event.preventDefault();
+          startTracePan(event);
+          return;
+        }
         if (isTracingReady()) {
           startTracing(event);
           return;
@@ -2516,6 +3146,10 @@
       });
 
       canvas.addEventListener("pointermove", (event) => {
+        if (continueTracePan(event)) {
+          event.preventDefault();
+          return;
+        }
         if (event.buttons !== 1 && event.pointerType !== "touch") return;
         if (isTracingReady()) {
           continueTracing(event);
@@ -2524,9 +3158,20 @@
         interactWithStage(event, false);
       });
 
-      canvas.addEventListener("pointerup", endTracing);
-      canvas.addEventListener("pointercancel", endTracing);
-      canvas.addEventListener("pointerleave", endTracing);
+      function endTracePointer(event) {
+        endTracePan(event);
+        endTracing();
+      }
+
+      canvas.addEventListener("pointerup", endTracePointer);
+      canvas.addEventListener("pointercancel", endTracePointer);
+      canvas.addEventListener("pointerleave", endTracePointer);
+      canvas.addEventListener("wheel", handleTraceWheel, { passive: false });
+      canvas.addEventListener("contextmenu", (event) => {
+        if (isTracingReady()) {
+          event.preventDefault();
+        }
+      });
 
       window.addEventListener("resize", resize);
       drawerOpenButton.addEventListener("click", () => {
