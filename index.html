@@ -2103,20 +2103,21 @@
             const sourceAlpha = sourcePixels[sourceIndex + 3] / 255;
             if (sourceAlpha <= 0.04) continue;
 
-            const wetEdge = distance > 0.7 ? 1.18 + blotchiness * 0.34 : 0.72;
-            const bloom = Math.max(0, 1 - Math.abs(distance - 0.74) * 4.5) * blotchiness;
-            const wash = Math.min(1, Math.max(0, (feather * 0.74 + bloom * 0.22) * (0.32 + noise * 0.5 + tide * 0.28) * wetEdge));
-            const targetAlpha = Math.round(255 * Math.min(0.94, wash * sourceAlpha));
+            const wetEdge = distance > 0.7 ? 1.24 + blotchiness * 0.38 : 0.96;
+            const bloom = Math.max(0, 1 - Math.abs(distance - 0.72) * 4.2) * blotchiness;
+            const wash = Math.min(1, Math.max(0, (feather * 0.92 + bloom * 0.26) * (0.48 + noise * 0.42 + tide * 0.28) * wetEdge));
+            const targetAlpha = Math.round(255 * Math.min(0.98, wash * sourceAlpha));
             if (targetAlpha <= 4) continue;
 
             const outputIndex = (y * width + x) * 4;
             const existingAlpha = repaintPixels[outputIndex + 3];
-            const pigmentLift = 0.88 + tide * 0.2;
-            const blend = Math.min(1, targetAlpha / 255 + 0.14);
+            const nextAlpha = Math.min(250, existingAlpha + targetAlpha * (1 - existingAlpha / 255) * 0.78);
+            const pigmentLift = 0.98 + tide * 0.16;
+            const blend = Math.min(1, targetAlpha / 210 + 0.22);
             repaintPixels[outputIndex] = Math.round(repaintPixels[outputIndex] * (1 - blend) + Math.min(255, sourcePixels[sourceIndex] * pigmentLift) * blend);
             repaintPixels[outputIndex + 1] = Math.round(repaintPixels[outputIndex + 1] * (1 - blend) + Math.min(255, sourcePixels[sourceIndex + 1] * pigmentLift) * blend);
             repaintPixels[outputIndex + 2] = Math.round(repaintPixels[outputIndex + 2] * (1 - blend) + Math.min(255, sourcePixels[sourceIndex + 2] * pigmentLift) * blend);
-            repaintPixels[outputIndex + 3] = Math.max(existingAlpha, targetAlpha);
+            repaintPixels[outputIndex + 3] = Math.max(existingAlpha, Math.round(nextAlpha));
           }
         }
 
