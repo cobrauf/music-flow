@@ -1503,7 +1503,7 @@
       }
 
       function isTracingInputEnabled() {
-        return isTracingReady() && isTraceZoomAtDefault();
+        return isTracingReady();
       }
 
       function syncTraceModeAssets() {
@@ -1612,26 +1612,10 @@
           drawTraceHotspot();
         }
         drawTraceTouchGlow(now);
-        drawTraceZoomDisabledOverlay(width, height);
-
         ctx.save();
         ctx.strokeStyle = "rgba(102, 216, 203, 0.18)";
         ctx.lineWidth = 1;
         ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
-        ctx.restore();
-      }
-
-      function drawTraceZoomDisabledOverlay(width, height) {
-        if (isTraceZoomAtDefault()) return;
-
-        ctx.save();
-        ctx.fillStyle = "rgba(5, 16, 19, 0.42)";
-        ctx.fillRect(0, 0, width, height);
-        ctx.fillStyle = "rgba(235, 249, 246, 0.92)";
-        ctx.font = "800 15px Inter, system-ui, sans-serif";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(`${isColoringMode() ? "Coloring" : "Tracing"} disabled at ${formatTraceZoom(state.trace.zoom)}. Zoom to ${formatTraceZoom(state.trace.defaultZoom)} to paint.`, width / 2, Math.max(72, height * 0.14));
         ctx.restore();
       }
 
@@ -1933,7 +1917,7 @@
 
       function startTracing(event) {
         if (!isTracingInputEnabled()) {
-          setTraceGate(isTracingReady() ? "zoom" : "ready");
+          setTraceGate("ready");
           return;
         }
 
@@ -1953,7 +1937,7 @@
         if (!state.trace.isPointerDown || !state.trace.activePath) return;
         if (!isTracingInputEnabled()) {
           endTracing();
-          setTraceGate(isTracingReady() ? "zoom" : "ready");
+          setTraceGate("ready");
           return;
         }
 
@@ -2314,7 +2298,7 @@
 
         state.trace.bounds = null;
         if (isTracingReady()) {
-          setTraceGate(isTraceZoomAtDefault() ? "ready" : "zoom");
+          setTraceGate("ready");
         } else {
           updateTraceStatus("ready");
         }
@@ -2340,7 +2324,7 @@
 
       function shouldPanTrace(event) {
         if (!isTracingReady()) return false;
-        return !isTraceZoomAtDefault() || event.button === 1 || event.button === 2;
+        return event.button === 1 || event.button === 2;
       }
 
       function startTracePan(event) {
@@ -2354,7 +2338,7 @@
         state.trace.activePath = null;
         state.trace.lastPoint = null;
         state.trace.smoothedSpeed = 0;
-        setTraceGate(isTraceZoomAtDefault() ? "ready" : "zoom");
+        setTraceGate("ready");
       }
 
       function continueTracePan(event) {
@@ -2395,7 +2379,7 @@
         state.trace.lastPoint = null;
         state.trace.smoothedSpeed = 0;
         if (isTracingReady()) {
-          setTraceGate(isTraceZoomAtDefault() ? "ready" : "zoom");
+          setTraceGate("ready");
         }
       }
 
@@ -2415,10 +2399,6 @@
       }
 
       function setTraceGate(gate) {
-        if (isTracingReady() && !isTraceZoomAtDefault() && gate !== "zoom") {
-          gate = "zoom";
-        }
-
         state.trace.gate = gate;
         updateTraceStatus(gate);
 
@@ -2470,12 +2450,6 @@
 
         if (!state.trace.image) {
           traceStatus.textContent = "Upload an image.";
-          traceStatus.classList.add("warn");
-          return;
-        }
-
-        if (!isTraceZoomAtDefault()) {
-          traceStatus.textContent = `${isColoringMode() ? "Coloring" : "Tracing"} disabled. Zoom to ${formatTraceZoom(state.trace.defaultZoom)}.`;
           traceStatus.classList.add("warn");
           return;
         }
