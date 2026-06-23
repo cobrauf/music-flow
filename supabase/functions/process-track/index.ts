@@ -306,15 +306,16 @@ function paceMelodyTiles(
   const maxTileGapMs = clampNumber(
     Math.round((beatMs * 2.75) / densityScale),
     900,
-    5200,
+    2000,
   );
   const baseMaxTiles = Math.ceil(
     durationMs / clampNumber(beatMs * 0.85, 620, 1050),
   );
+  const minTilesForGapLimit = Math.ceil(durationMs / maxTileGapMs) + 1;
   const maxTiles = Math.max(
-    4,
+    minTilesForGapLimit,
     Math.min(
-      260,
+      320,
       Math.ceil(baseMaxTiles * tileDensity),
     ),
   );
@@ -368,7 +369,7 @@ function refillLongTileGaps(
   if (selected.length < 2 || rejected.length === 0) return;
 
   const available = [...rejected].sort((a, b) => b.score - a.score);
-  const anchors = [...selected].sort((a, b) => a.note.time_ms - b.note.time_ms);
+  let anchors = [...selected].sort((a, b) => a.note.time_ms - b.note.time_ms);
 
   for (let index = 0; index < anchors.length - 1; index += 1) {
     const current = anchors[index];
@@ -383,6 +384,11 @@ function refillLongTileGaps(
     if (!fill) continue;
     selected.push(fill);
     available.splice(available.indexOf(fill), 1);
+    anchors = [...selected].sort((a, b) => a.note.time_ms - b.note.time_ms);
+    index = Math.max(
+      -1,
+      anchors.findIndex((candidate) => candidate === current) - 1,
+    );
   }
 }
 
@@ -491,7 +497,7 @@ function clampNumber(value: number, min: number, max: number) {
 function clampTileDensity(value: unknown) {
   const density = Number(value);
   if (!Number.isFinite(density)) return 1;
-  return Math.max(0.25, Math.min(3, density));
+  return Math.max(0.25, Math.min(5, density));
 }
 
 function clampNoteDuration(value: unknown) {
