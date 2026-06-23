@@ -744,6 +744,13 @@
                   Audio file
                   <input class="file" id="upload-file" type="file" accept="audio/mpeg,audio/wav,audio/mp3,.mp3,.wav">
                 </label>
+                <label>
+                  Tile density
+                  <div class="slider-row">
+                    <input id="tile-density" type="range" min="0" max="4" step="1" value="2">
+                    <span id="tile-density-value">Default</span>
+                  </div>
+                </label>
                 <button class="button primary" id="upload-process" type="button">Upload and Process</button>
                 <button class="button" id="reprocess-track" type="button">Rerun Processing for Selected Track</button>
                 <button class="button" id="audit-piano-tiles" type="button">Audit Piano Tile Notes</button>
@@ -887,6 +894,8 @@
       const uploadTitleInput = document.getElementById("upload-title");
       const uploadArtistInput = document.getElementById("upload-artist");
       const uploadFileInput = document.getElementById("upload-file");
+      const tileDensityInput = document.getElementById("tile-density");
+      const tileDensityValue = document.getElementById("tile-density-value");
       const uploadProcessButton = document.getElementById("upload-process");
       const reprocessTrackButton = document.getElementById("reprocess-track");
       const auditPianoTilesButton = document.getElementById("audit-piano-tiles");
@@ -920,6 +929,13 @@
       const colorBrushSizeValue = document.getElementById("color-brush-size-value");
       const colorBlotchinessInput = document.getElementById("color-blotchiness");
       const colorBlotchinessValue = document.getElementById("color-blotchiness-value");
+      const tileDensityOptions = [
+        { value: 0.25, label: "0.25x" },
+        { value: 0.5, label: "0.5x" },
+        { value: 1, label: "Default" },
+        { value: 2, label: "2x" },
+        { value: 3, label: "3x" }
+      ];
       const traceHighlightColorInput = document.getElementById("trace-highlight-color");
       const traceHighlightBrightnessInput = document.getElementById("trace-highlight-brightness");
       const traceHighlightBrightnessValue = document.getElementById("trace-highlight-brightness-value");
@@ -2737,6 +2753,16 @@
         return `${Number(zoom).toFixed(2).replace(/\.?0+$/, "")}x`;
       }
 
+      function selectedTileDensity() {
+        const index = Math.max(0, Math.min(tileDensityOptions.length - 1, Number(tileDensityInput.value) || 0));
+        return tileDensityOptions[index].value;
+      }
+
+      function syncTileDensityLabel() {
+        const index = Math.max(0, Math.min(tileDensityOptions.length - 1, Number(tileDensityInput.value) || 0));
+        tileDensityValue.textContent = tileDensityOptions[index].label;
+      }
+
       function getActiveZoomInput() {
         return isColoringMode() ? colorZoomInput : traceZoomInput;
       }
@@ -3357,6 +3383,7 @@
         const file = uploadFileInput.files && uploadFileInput.files[0];
         const title = uploadTitleInput.value.trim() || (file && file.name.replace(/\.[^.]+$/, "")) || "Untitled Track";
         const artist = uploadArtistInput.value.trim();
+        const tileDensity = selectedTileDensity();
 
         if (!file) {
           throw new Error("Choose an audio file first.");
@@ -3427,7 +3454,7 @@
             Authorization: `Bearer ${anonKey}`,
             "Content-Type": "application/json"
           },
-          body: JSON.stringify({ track_id: track.id, storage_path: storagePath, analysis })
+          body: JSON.stringify({ track_id: track.id, storage_path: storagePath, analysis, tile_density: tileDensity })
         });
 
         if (!processResponse.ok) {
@@ -3447,6 +3474,7 @@
       async function reprocessSelectedTrack() {
         const { baseUrl, anonKey } = getSbConfig();
         const track = state.tracks.find((item) => item.id === state.selectedTrackId);
+        const tileDensity = selectedTileDensity();
 
         if (!track || track.id === "sample" || track.id === "fallback") {
           throw new Error("Select a Supabase track first.");
@@ -3475,7 +3503,7 @@
             Authorization: `Bearer ${anonKey}`,
             "Content-Type": "application/json"
           },
-          body: JSON.stringify({ track_id: track.id, analysis })
+          body: JSON.stringify({ track_id: track.id, analysis, tile_density: tileDensity })
         });
 
         if (!processResponse.ok) {
@@ -4422,6 +4450,9 @@
         state.trace.colorBlotchiness = Number(colorBlotchinessInput.value) / 100;
         colorBlotchinessValue.textContent = `${colorBlotchinessInput.value}%`;
       });
+
+      tileDensityInput.addEventListener("input", syncTileDensityLabel);
+      syncTileDensityLabel();
 
       playToggleButton.addEventListener("click", async () => {
         if (state.isPlaying) {

@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 type ProcessTrackRequest = {
   track_id?: string;
   storage_path?: string;
+  tile_density?: number;
   analysis?: AudioAnalysis;
 };
 
@@ -67,9 +68,15 @@ type NormalizedMelodyNote = {
   pitch_source?: string;
 };
 
+type MelodyTileCandidate = {
+  note: NormalizedMelodyNote;
+  score: number;
+};
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
@@ -83,7 +90,8 @@ Deno.serve(async (request) => {
   }
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceRoleKey = Deno.env.get("SB_SERVICE_ROLE_KEY") ?? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const serviceRoleKey = Deno.env.get("SB_SERVICE_ROLE_KEY") ??
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
   if (!supabaseUrl || !serviceRoleKey) {
     return json({ error: "Missing SB service configuration" }, 500);
@@ -127,10 +135,13 @@ Deno.serve(async (request) => {
     const levelMap = buildLevelMap({
       title: track.title,
       bpm: clampBpm(payload.analysis?.bpm ?? track.bpm ?? 72),
-      durationMs: clampDuration(payload.analysis?.duration_ms ?? track.duration_ms ?? 64000),
+      durationMs: clampDuration(
+        payload.analysis?.duration_ms ?? track.duration_ms ?? 64000,
+      ),
       storagePath,
       onsets: normalizeOnsets(payload.analysis?.onsets),
       melodyNotes: normalizeMelodyNotes(payload.analysis?.melody_notes),
+      tileDensity: clampTileDensity(payload.tile_density),
     });
 
     validateLevelMap(levelMap);
@@ -151,9 +162,15 @@ Deno.serve(async (request) => {
       throw updateError;
     }
 
-    return json({ track_id: payload.track_id, status: "ready", level_map: levelMap });
+    return json({
+      track_id: payload.track_id,
+      status: "ready",
+      level_map: levelMap,
+    });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown processing error";
+    const message = error instanceof Error
+      ? error.message
+      : "Unknown processing error";
     await sb
       .from("tracks")
       .update({
@@ -173,6 +190,7 @@ function buildLevelMap(input: {
   storagePath: string;
   onsets: NormalizedOnset[];
   melodyNotes: NormalizedMelodyNote[];
+  tileDensity: number;
 }): LevelMap {
   const beatMs = Math.round(60000 / input.bpm);
   const colors = ["#66d8cb", "#edcb7e", "#b99cff", "#e58ba8"];
@@ -227,9 +245,15 @@ function buildLevelMap(input: {
         pitch_confidence: onset.pitch_confidence,
         pitch_source: onset.pitch_source,
       }));
+  const pacedMelodyTileEvents = paceMelodyTiles(
+    melodyTileEvents,
+    input.durationMs,
+    beatMs,
+    input.tileDensity,
+  );
 
-  for (let index = 0; index < melodyTileEvents.length; index += 1) {
-    const note = melodyTileEvents[index];
+  for (let index = 0; index < pacedMelodyTileEvents.length; index += 1) {
+    const note = pacedMelodyTileEvents[index];
     if (note.time_ms >= input.durationMs) continue;
 
     events.push({
@@ -261,6 +285,140 @@ function fallbackOnsets(durationMs: number, beatMs: number) {
     onsets.push({ time_ms: time + Math.round(beatMs * 0.9), intensity: 0.55 });
   }
   return onsets;
+}
+
+function paceMelodyTiles(
+  notes: NormalizedMelodyNote[],
+  durationMs: number,
+  beatMs: number,
+  tileDensity: number,
+) {
+  if (notes.length <= 1) return notes;
+
+  const densityScale = Math.sqrt(tileDensity);
+  const gridMs = clampNumber(Math.round(beatMs / 2), 180, 420);
+  const maxSnapMs = Math.min(120, Math.round(gridMs * 0.35));
+  const minTileGapMs = clampNumber(
+    Math.round((beatMs * 0.45) / densityScale),
+    180,
+    1120,
+  );
+  const maxTileGapMs = clampNumber(
+    Math.round((beatMs * 2.75) / densityScale),
+    900,
+    5200,
+  );
+  const baseMaxTiles = Math.ceil(
+    durationMs / clampNumber(beatMs * 0.85, 620, 1050),
+  );
+  const maxTiles = Math.max(
+    4,
+    Math.min(
+      260,
+      Math.ceil(baseMaxTiles * tileDensity),
+    ),
+  );
+
+  const candidates = notes
+    .map((note) => {
+      const snappedTimeMs = quantizeTime(note.time_ms, gridMs, maxSnapMs);
+      return {
+        note: { ...note, time_ms: snappedTimeMs },
+        score: scoreMelodyTile(note),
+      };
+    })
+    .filter((candidate) => candidate.note.time_ms < durationMs)
+    .sort((a, b) => a.note.time_ms - b.note.time_ms || b.score - a.score);
+
+  const selected: typeof candidates = [];
+  const rejected: typeof candidates = [];
+
+  for (const candidate of candidates) {
+    const previous = selected[selected.length - 1];
+    if (
+      !previous ||
+      candidate.note.time_ms - previous.note.time_ms >= minTileGapMs
+    ) {
+      selected.push(candidate);
+      continue;
+    }
+
+    if (candidate.score > previous.score) {
+      rejected.push(previous);
+      selected[selected.length - 1] = candidate;
+    } else {
+      rejected.push(candidate);
+    }
+  }
+
+  selected.sort((a, b) => a.note.time_ms - b.note.time_ms);
+  refillLongTileGaps(selected, rejected, minTileGapMs, maxTileGapMs);
+  selected.sort((a, b) => a.note.time_ms - b.note.time_ms);
+
+  return limitMelodyTileCandidates(selected, maxTiles)
+    .map((candidate) => candidate.note);
+}
+
+function refillLongTileGaps(
+  selected: MelodyTileCandidate[],
+  rejected: MelodyTileCandidate[],
+  minTileGapMs: number,
+  maxTileGapMs: number,
+) {
+  if (selected.length < 2 || rejected.length === 0) return;
+
+  const available = [...rejected].sort((a, b) => b.score - a.score);
+  const anchors = [...selected].sort((a, b) => a.note.time_ms - b.note.time_ms);
+
+  for (let index = 0; index < anchors.length - 1; index += 1) {
+    const current = anchors[index];
+    const next = anchors[index + 1];
+    if (next.note.time_ms - current.note.time_ms <= maxTileGapMs) continue;
+
+    const fill = available.find((candidate) => (
+      candidate.note.time_ms - current.note.time_ms >= minTileGapMs &&
+      next.note.time_ms - candidate.note.time_ms >= minTileGapMs
+    ));
+
+    if (!fill) continue;
+    selected.push(fill);
+    available.splice(available.indexOf(fill), 1);
+  }
+}
+
+function limitMelodyTileCandidates(
+  candidates: MelodyTileCandidate[],
+  maxTiles: number,
+) {
+  if (candidates.length <= maxTiles) return candidates;
+
+  const limited: MelodyTileCandidate[] = [];
+  const stride = candidates.length / maxTiles;
+
+  for (let index = 0; index < maxTiles; index += 1) {
+    const start = Math.floor(index * stride);
+    const end = Math.max(start + 1, Math.floor((index + 1) * stride));
+    const bucket = candidates.slice(start, end);
+    bucket.sort((a, b) => b.score - a.score || a.note.time_ms - b.note.time_ms);
+    limited.push(bucket[0]);
+  }
+
+  return limited.sort((a, b) => a.note.time_ms - b.note.time_ms);
+}
+
+function quantizeTime(timeMs: number, gridMs: number, maxSnapMs: number) {
+  const snapped = Math.round(timeMs / gridMs) * gridMs;
+  return Math.abs(snapped - timeMs) <= maxSnapMs ? snapped : timeMs;
+}
+
+function scoreMelodyTile(note: NormalizedMelodyNote) {
+  const confidence = note.pitch_confidence ?? 0.35;
+  const durationWeight = Math.min(
+    1,
+    Math.max(0, (note.duration_ms ?? 160) / 700),
+  );
+  const sourceWeight = note.pitch_source === "melodia" ? 1 : 0.65;
+  return confidence * 0.55 + durationWeight * 0.3 + sourceWeight * 0.15;
 }
 
 function normalizeOnsets(onsets: AudioAnalysis["onsets"]) {
@@ -300,7 +458,8 @@ function normalizeMelodyNotes(notes: AudioAnalysis["melody_notes"]) {
 }
 
 function noteToLane(note: NormalizedMelodyNote, index: number) {
-  const midiNote = note.midi_note ?? (note.frequency_hz ? frequencyToMidi(note.frequency_hz) : undefined);
+  const midiNote = note.midi_note ??
+    (note.frequency_hz ? frequencyToMidi(note.frequency_hz) : undefined);
   if (!Number.isFinite(midiNote)) return index % 4;
   const octavePosition = ((Math.round(midiNote as number) % 12) + 12) % 12;
   if (octavePosition <= 2) return 0;
@@ -324,6 +483,17 @@ function clampIntensity(value: number) {
   return Math.max(0.1, Math.min(1, value));
 }
 
+function clampNumber(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, value));
+}
+
+function clampTileDensity(value: unknown) {
+  const density = Number(value);
+  if (!Number.isFinite(density)) return 1;
+  return Math.max(0.25, Math.min(3, density));
+}
+
 function clampNoteDuration(value: unknown) {
   const duration = Number(value);
   if (!Number.isFinite(duration)) return undefined;
@@ -332,13 +502,17 @@ function clampNoteDuration(value: unknown) {
 
 function clampFrequency(value: unknown) {
   const frequency = Number(value);
-  if (!Number.isFinite(frequency) || frequency < 55 || frequency > 1760) return undefined;
+  if (!Number.isFinite(frequency) || frequency < 55 || frequency > 1760) {
+    return undefined;
+  }
   return Math.round(frequency * 10) / 10;
 }
 
 function clampMidiNote(value: unknown) {
   const midiNote = Number(value);
-  if (!Number.isFinite(midiNote) || midiNote < 21 || midiNote > 108) return undefined;
+  if (!Number.isFinite(midiNote) || midiNote < 21 || midiNote > 108) {
+    return undefined;
+  }
   return Math.round(midiNote);
 }
 
@@ -349,7 +523,9 @@ function clampPitchConfidence(value: unknown) {
 }
 
 function normalizePitchSource(value: unknown) {
-  if (value !== "melodia" && value !== "autocorrelation" && value !== "manual") return undefined;
+  if (
+    value !== "melodia" && value !== "autocorrelation" && value !== "manual"
+  ) return undefined;
   return value;
 }
 
