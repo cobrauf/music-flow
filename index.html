@@ -601,8 +601,8 @@
                 <label>
                   Tap sounds
                   <div class="slider-row">
-                <input id="tap-volume" type="range" min="0" max="100" value="90">
-                <span id="tap-volume-value">90%</span>
+                    <input id="tap-volume" type="range" min="0" max="200" value="90">
+                    <span id="tap-volume-value">90%</span>
                   </div>
                 </label>
               </div>
@@ -794,6 +794,7 @@
         touches: [],
         tileFlashes: [],
         pianoTileHits: new Set(),
+        pianoHarmonyHits: new Set(),
         pianoTileFeedback: [],
         nextEventIndex: 0,
         startedAt: 0,
@@ -947,7 +948,11 @@
       const pianoTiles = {
         lanes: 4,
         travelMs: 2400,
-        hitWindowMs: 360
+        hitWindowMs: 360,
+        harmonyRows: 4,
+        harmonyCols: 4,
+        harmonySemitones: [-7, -3, 3, 7],
+        laneTopMargin: 0.08
       };
       const essentiaConfig = {
         wasmUrl: "https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia-wasm.es.js",
@@ -959,7 +964,7 @@
         minNoteDurationMs: 110,
         noteMergeGapMs: 90,
         noteChangeSemitones: 0.85,
-        melodiaTimeoutMs: 45000
+        melodiaTimeoutMs: 240000
       };
       const synth = {
         context: null,
@@ -978,16 +983,16 @@
 
       function loadSoundSettings() {
         state.musicVolume = readStoredVolume(storage.musicVolume, 0.85);
-        state.tapVolume = readStoredVolume(storage.tapVolume, 0.9);
+        state.tapVolume = readStoredVolume(storage.tapVolume, 0.9, 2);
         musicVolumeInput.value = String(Math.round(state.musicVolume * 100));
         tapVolumeInput.value = String(Math.round(state.tapVolume * 100));
         applySoundSettings();
       }
 
-      function readStoredVolume(key, fallback) {
+      function readStoredVolume(key, fallback, max = 1) {
         const stored = Number(localStorage.getItem(key));
         if (!Number.isFinite(stored)) return fallback;
-        return Math.max(0, Math.min(1, stored));
+        return Math.max(0, Math.min(max, stored));
       }
 
       function applySoundSettings() {
@@ -995,10 +1000,14 @@
         musicVolumeValue.textContent = `${Math.round(state.musicVolume * 100)}%`;
         tapVolumeValue.textContent = `${Math.round(state.tapVolume * 100)}%`;
         if (synth.master) {
-          synth.master.gain.setTargetAtTime(0.55 * state.tapVolume, synth.context.currentTime, 0.03);
+          synth.master.gain.setTargetAtTime(getTapMasterGain(), synth.context.currentTime, 0.03);
         }
         localStorage.setItem(storage.musicVolume, String(state.musicVolume));
         localStorage.setItem(storage.tapVolume, String(state.tapVolume));
+      }
+
+      function getTapMasterGain() {
+        return 0.72 * state.tapVolume;
       }
 
       function updateAudioVolume() {
@@ -1083,6 +1092,7 @@
         state.touches = [];
         state.tileFlashes = [];
         state.pianoTileHits = new Set();
+        state.pianoHarmonyHits = new Set();
         state.pianoTileFeedback = [];
         state.nextEventIndex = 0;
         state.pausedAt = 0;
@@ -2051,6 +2061,7 @@
           laneWidth,
           tileWidth: Math.max(28, laneWidth - laneGap),
           tileHeight: Math.max(70, Math.min(118, height * 0.14)),
+          laneTop: height * pianoTiles.laneTopMargin,
           hitZoneTop,
           hitZoneBottom,
           hitCenterY
@@ -2071,15 +2082,89 @@
         return bounds.hitCenterY - bounds.tileHeight / 2 - (lead / pianoTiles.travelMs) * (bounds.hitCenterY + bounds.tileHeight);
       }
 
+      function getPianoHarmonyGridBounds(width, height, tileBounds) {
+        const gap = Math.max(6, Math.min(12, width * 0.012));
+        const gridBottom = tileBounds.hitZoneTop - Math.max(14, height * 0.024);
+        const gridTop = tileBounds.laneTop;
+        const gridWidth = width - tileBounds.sideInset * 2;
+        const cellWidth = (gridWidth - gap * (pianoTiles.harmonyCols - 1)) / pianoTiles.harmonyCols;
+        const cellHeight = (gridBottom - gridTop - gap * (pianoTiles.harmonyRows - 1)) / pianoTiles.harmonyRows;
+
+        return {
+          left: tileBounds.sideInset,
+          right: width - tileBounds.sideInset,
+          top: gridTop,
+          bottom: gridBottom,
+          gap,
+          cellWidth,
+          cellHeight
+        };
+      }
+
+      function getPianoHarmonyCellAt(pointerX, pointerY, gridBounds) {
+        if (
+          pointerX < gridBounds.left ||
+          pointerX > gridBounds.right ||
+          pointerY < gridBounds.top ||
+          pointerY > gridBounds.bottom
+        ) {
+          return null;
+        }
+
+        const localX = pointerX - gridBounds.left;
+        const localY = pointerY - gridBounds.top;
+        const colStride = gridBounds.cellWidth + gridBounds.gap;
+        const rowStride = gridBounds.cellHeight + gridBounds.gap;
+        const col = Math.floor(localX / colStride);
+        const row = Math.floor(localY / rowStride);
+        const insideCellX = localX - col * colStride <= gridBounds.cellWidth;
+        const insideCellY = localY - row * rowStride <= gridBounds.cellHeight;
+        if (
+          col < 0 ||
+          col >= pianoTiles.harmonyCols ||
+          row < 0 ||
+          row >= pianoTiles.harmonyRows ||
+          !insideCellX ||
+          !insideCellY
+        ) {
+          return null;
+        }
+
+        return { col, row, index: row * pianoTiles.harmonyCols + col };
+      }
+
+      function getActivePianoTile(ms, bounds, lane = null) {
+        let best = null;
+        getPianoTileEvents().forEach((candidate, index) => {
+          const eventTime = Number(candidate.time_ms || 0);
+          const candidateLane = Math.max(0, Math.min(pianoTiles.lanes - 1, Number(candidate.lane || 0)));
+          if (lane !== null && candidateLane !== lane) return;
+          const timingDelta = Math.abs(ms - eventTime);
+          if (timingDelta > pianoTiles.hitWindowMs) return;
+
+          const tileY = getPianoTileY(bounds, eventTime, ms);
+          const overlapsZone = tileY <= bounds.hitZoneBottom && tileY + bounds.tileHeight >= bounds.hitZoneTop;
+          if (!overlapsZone) return;
+
+          const key = pianoTileKey(candidate, index);
+          if (!best || timingDelta < best.timingDelta) {
+            best = { event: candidate, index, key, timingDelta, lane: candidateLane };
+          }
+        });
+        return best;
+      }
+
       function drawPianoTiles(width, height, ms, now) {
         const bounds = getPianoTileBounds(width, height);
+        const harmonyBounds = getPianoHarmonyGridBounds(width, height, bounds);
+        const activeTile = getActivePianoTile(ms, bounds);
 
         ctx.save();
         ctx.lineWidth = 1;
         for (let lane = 0; lane < pianoTiles.lanes; lane += 1) {
           const x = getPianoTileX(bounds, lane);
           ctx.fillStyle = lane % 2 === 0 ? "rgba(255, 255, 255, 0.035)" : "rgba(255, 255, 255, 0.018)";
-          ctx.fillRect(x, height * 0.08, bounds.tileWidth, height * 0.82);
+          ctx.fillRect(x, bounds.laneTop, bounds.tileWidth, height * 0.82);
         }
 
         ctx.fillStyle = "rgba(237, 203, 126, 0.14)";
@@ -2092,6 +2177,8 @@
         ctx.moveTo(bounds.sideInset, bounds.hitZoneBottom);
         ctx.lineTo(width - bounds.sideInset, bounds.hitZoneBottom);
         ctx.stroke();
+
+        drawPianoHarmonyGrid(harmonyBounds, activeTile, now);
 
         const tileEvents = getPianoTileEvents()
           .map((event, index) => ({ event, index }))
@@ -2140,6 +2227,46 @@
         ctx.restore();
       }
 
+      function drawPianoHarmonyGrid(bounds, activeTile, now) {
+        const activeColor = activeTile && activeTile.event.color ? activeTile.event.color : "#66d8cb";
+        const active = Boolean(activeTile);
+
+        ctx.save();
+        for (let row = 0; row < pianoTiles.harmonyRows; row += 1) {
+          for (let col = 0; col < pianoTiles.harmonyCols; col += 1) {
+            const x = bounds.left + col * (bounds.cellWidth + bounds.gap);
+            const y = bounds.top + row * (bounds.cellHeight + bounds.gap);
+            const rowFromBottom = pianoTiles.harmonyRows - 1 - row;
+            const glow = active ? 0.1 + rowFromBottom * 0.025 : 0;
+
+            roundRect(ctx, x, y, bounds.cellWidth, bounds.cellHeight, 6);
+            ctx.fillStyle = active ? activeColor : "rgba(255, 255, 255, 0.06)";
+            ctx.globalAlpha = active ? 0.14 + glow : 0.07;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            ctx.strokeStyle = active ? "rgba(255, 255, 255, 0.26)" : "rgba(255, 255, 255, 0.11)";
+            ctx.lineWidth = active ? 1.35 : 1;
+            ctx.stroke();
+          }
+        }
+
+        state.pianoTileFeedback
+          .filter((feedback) => feedback.kind === "harmony")
+          .forEach((feedback) => {
+            const age = now - feedback.born;
+            if (age < 0 || age > 520) return;
+            const t = age / 520;
+            const cellX = bounds.left + feedback.col * (bounds.cellWidth + bounds.gap);
+            const cellY = bounds.top + feedback.row * (bounds.cellHeight + bounds.gap);
+            roundRect(ctx, cellX, cellY, bounds.cellWidth, bounds.cellHeight, 6);
+            ctx.fillStyle = feedback.color;
+            ctx.globalAlpha = (1 - t) * 0.26;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+          });
+        ctx.restore();
+      }
+
       function interactWithStage(event, shouldPlayTone = true) {
         const rect = canvas.getBoundingClientRect();
         const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
@@ -2174,30 +2301,22 @@
         const now = performance.now();
         const ms = playbackMs(now);
         const bounds = getPianoTileBounds(canvas.clientWidth, canvas.clientHeight);
+        const harmonyBounds = getPianoHarmonyGridBounds(canvas.clientWidth, canvas.clientHeight, bounds);
         const pointerX = x * canvas.clientWidth;
         const pointerY = y * canvas.clientHeight;
+        const harmonyCell = getPianoHarmonyCellAt(pointerX, pointerY, harmonyBounds);
         const lane = getPianoTileLaneAt(pointerX, bounds);
-        let best = null;
+
+        if (harmonyCell) {
+          interactWithPianoHarmonyGrid(harmonyCell, x, y, now, ms, bounds);
+          return;
+        }
 
         if (lane === null || pointerY < bounds.hitZoneTop || pointerY > bounds.hitZoneBottom) return;
 
-        getPianoTileEvents().forEach((candidate, index) => {
-          const key = pianoTileKey(candidate, index);
-          if (state.pianoTileHits.has(key)) return;
-          if (Math.max(0, Math.min(pianoTiles.lanes - 1, Number(candidate.lane || 0))) !== lane) return;
-          const timingDelta = Math.abs(ms - Number(candidate.time_ms || 0));
-          if (timingDelta > pianoTiles.hitWindowMs) return;
+        const best = getActivePianoTile(ms, bounds, lane);
 
-          const tileY = getPianoTileY(bounds, Number(candidate.time_ms || 0), ms);
-          const overlapsZone = tileY <= bounds.hitZoneBottom && tileY + bounds.tileHeight >= bounds.hitZoneTop;
-          if (!overlapsZone) return;
-
-          if (!best || timingDelta < best.timingDelta) {
-            best = { event: candidate, index, key, timingDelta };
-          }
-        });
-
-        if (!best) return;
+        if (!best || state.pianoTileHits.has(best.key)) return;
 
         state.pianoTileHits.add(best.key);
         const color = best.event.color || "#edcb7e";
@@ -2217,6 +2336,39 @@
         state.lastAction = "piano_tile_hit";
       }
 
+      function interactWithPianoHarmonyGrid(cell, x, y, now, ms, bounds) {
+        const active = getActivePianoTile(ms, bounds);
+        if (!active) return;
+
+        const key = `${active.key}:harmony:${cell.row}:${cell.col}`;
+        if (state.pianoHarmonyHits.has(key)) return;
+        state.pianoHarmonyHits.add(key);
+
+        const color = active.event.color || "#66d8cb";
+        state.touches.push({ x, y, born: now, color });
+        state.pulses.push({
+          born: ms,
+          x,
+          y,
+          intensity: 0.34,
+          color
+        });
+        state.pianoTileFeedback.push({
+          x,
+          y,
+          born: now,
+          color,
+          kind: "harmony",
+          row: cell.row,
+          col: cell.col
+        });
+        playTileTone(getPianoHarmonyToneEvent(active.event, active.index, cell));
+        if (navigator.vibrate) {
+          navigator.vibrate(12);
+        }
+        state.lastAction = "piano_harmony";
+      }
+
       function getPianoTileToneEvent(event, index) {
         const hasTrackPitch = Number.isFinite(Number(event.frequency_hz)) ||
           Number.isFinite(Number(event.midi_note));
@@ -2225,6 +2377,24 @@
         return {
           ...event,
           fallback_midi_note: pianoTileFallbackMidiNote(event, index)
+        };
+      }
+
+      function getPianoHarmonyToneEvent(event, index, cell) {
+        const baseTone = getPianoTileToneEvent(event, index);
+        const baseFrequency = tileToFrequency(baseTone);
+        const semitoneOffset = pianoTiles.harmonySemitones[cell.col] || 0;
+        const frequency = baseFrequency * Math.pow(2, semitoneOffset / 12);
+
+        return {
+          ...baseTone,
+          frequency_hz: frequency,
+          midi_note: undefined,
+          fallback_midi_note: undefined,
+          row: cell.row,
+          col: cell.col,
+          harmony_semitones: semitoneOffset,
+          soundVariant: pianoTiles.harmonyRows - 1 - cell.row
         };
       }
 
@@ -2848,7 +3018,7 @@
         traceStatus.classList.remove("good", "warn", "hot");
 
         if (isPianoTileMode()) {
-          traceStatus.textContent = "Tap tiles in the zone.";
+          traceStatus.textContent = "Tap tiles or harmony pads.";
           traceStatus.classList.add("good");
           return;
         }
@@ -2926,7 +3096,7 @@
         const context = new AudioContextClass();
         const master = context.createGain();
 
-        master.gain.value = 0.55 * state.tapVolume;
+        master.gain.value = getTapMasterGain();
         master.connect(context.destination);
 
         synth.context = context;
@@ -2956,18 +3126,57 @@
 
         const tileCol = Number.isFinite(Number(tile.col)) ? Number(tile.col) : Number(tile.lane || 0);
         const tileRow = Number.isFinite(Number(tile.row)) ? Number(tile.row) : 3;
+        const soundVariant = Math.max(0, Math.min(3, Number(tile.soundVariant || 0)));
 
         filter.type = "lowpass";
-        filter.frequency.setValueAtTime(900 + tileCol * 260 + (grid.rows - tileRow) * 70, now);
+        filter.frequency.setValueAtTime(900 + tileCol * 260 + (grid.rows - tileRow) * 70 + soundVariant * 260, now);
         filter.Q.value = 0.6;
 
-        gain.gain.setValueAtTime(0.0001, now);
-        gain.gain.exponentialRampToValueAtTime(0.18, now + 0.035);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.6);
-
-        shimmerGain.gain.setValueAtTime(0.0001, now);
-        shimmerGain.gain.exponentialRampToValueAtTime(0.035, now + 0.055);
-        shimmerGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.2);
+        if (soundVariant === 1) {
+          voice.type = "triangle";
+          shimmer.type = "sine";
+          shimmer.frequency.setValueAtTime(frequency * 1.5, now);
+          filter.Q.value = 1.1;
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.exponentialRampToValueAtTime(0.16, now + 0.018);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.82);
+          shimmerGain.gain.setValueAtTime(0.0001, now);
+          shimmerGain.gain.exponentialRampToValueAtTime(0.026, now + 0.035);
+          shimmerGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.58);
+        } else if (soundVariant === 2) {
+          voice.type = "sine";
+          shimmer.type = "triangle";
+          shimmer.frequency.setValueAtTime(frequency * 2.5, now);
+          voice.detune.setValueAtTime(4, now);
+          filter.frequency.setValueAtTime(1800 + tileCol * 340, now);
+          filter.Q.value = 0.9;
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.exponentialRampToValueAtTime(0.13, now + 0.012);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.35);
+          shimmerGain.gain.setValueAtTime(0.0001, now);
+          shimmerGain.gain.exponentialRampToValueAtTime(0.05, now + 0.028);
+          shimmerGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.1);
+        } else if (soundVariant === 3) {
+          voice.type = "sine";
+          shimmer.type = "sawtooth";
+          shimmer.frequency.setValueAtTime(frequency * 2, now);
+          shimmer.detune.setValueAtTime(-9, now);
+          filter.frequency.setValueAtTime(1200 + tileCol * 180, now);
+          filter.Q.value = 0.45;
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.exponentialRampToValueAtTime(0.105, now + 0.16);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.95);
+          shimmerGain.gain.setValueAtTime(0.0001, now);
+          shimmerGain.gain.exponentialRampToValueAtTime(0.018, now + 0.22);
+          shimmerGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.7);
+        } else {
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.exponentialRampToValueAtTime(0.18, now + 0.035);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + 1.6);
+          shimmerGain.gain.setValueAtTime(0.0001, now);
+          shimmerGain.gain.exponentialRampToValueAtTime(0.035, now + 0.055);
+          shimmerGain.gain.exponentialRampToValueAtTime(0.0001, now + 1.2);
+        }
 
         voice.connect(filter);
         filter.connect(gain);
@@ -2977,8 +3186,9 @@
 
         voice.start(now);
         shimmer.start(now);
-        voice.stop(now + 1.7);
-        shimmer.stop(now + 1.25);
+        const stopAt = soundVariant === 3 ? now + 2.05 : soundVariant === 1 ? now + 0.92 : now + 1.7;
+        voice.stop(stopAt);
+        shimmer.stop(soundVariant === 3 ? now + 1.8 : soundVariant === 1 ? now + 0.68 : now + 1.25);
       }
 
       function tileToFrequency(tile) {
@@ -3603,10 +3813,19 @@
 
       function logMelodyExtractionStep(step, details = {}) {
         const elapsed = details.startedAt ? Math.round(performance.now() - details.startedAt) : 0;
-        const suffix = elapsed ? ` (${elapsed}ms)` : "";
+        const suffix = elapsed ? ` (${formatDuration(elapsed)})` : "";
         const label = `Melody extraction: ${step}${suffix}`;
         adminStatus.textContent = label;
         console.info("[music-flow] " + label, details);
+      }
+
+      function formatDuration(ms) {
+        if (ms < 10000) return `${ms}ms`;
+        const seconds = Math.round(ms / 1000);
+        if (seconds < 60) return `${seconds}s`;
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = seconds % 60;
+        return `${minutes}m ${remainingSeconds}s`;
       }
 
       async function extractMelodyContour(channelData, sampleRate) {
@@ -3630,15 +3849,23 @@
           const workerUrl = URL.createObjectURL(new Blob([createEssentiaWorkerScript()], { type: "text/javascript" }));
           const worker = new Worker(workerUrl, { type: "module" });
           let settled = false;
+          let lastWorkerStep = "starting worker";
           const timeout = window.setTimeout(() => {
             logMelodyExtractionStep("timed out, falling back", { startedAt });
             finish(() => reject(new Error("Essentia melody extraction timed out. Using fallback pitch estimates.")));
           }, essentiaConfig.melodiaTimeoutMs);
+          const heartbeat = window.setInterval(() => {
+            logMelodyExtractionStep(`${lastWorkerStep} still running`, {
+              startedAt,
+              timeoutMs: essentiaConfig.melodiaTimeoutMs
+            });
+          }, 10000);
 
           function finish(callback) {
             if (settled) return;
             settled = true;
             window.clearTimeout(timeout);
+            window.clearInterval(heartbeat);
             worker.terminate();
             URL.revokeObjectURL(workerUrl);
             callback();
@@ -3647,6 +3874,7 @@
           worker.addEventListener("message", (event) => {
             const message = event.data || {};
             if (message.type === "progress") {
+              lastWorkerStep = message.step;
               logMelodyExtractionStep(message.step, {
                 startedAt,
                 ...(message.details || {})
@@ -4070,7 +4298,7 @@
       });
 
       musicVolumeInput.addEventListener("input", () => {
-        state.musicVolume = Number(musicVolumeInput.value) / 100;
+        state.musicVolume = Number(musicVolumeInput.value) / Number(musicVolumeInput.max || 100);
         applySoundSettings();
       });
 
@@ -4083,6 +4311,7 @@
         state.trace.mode = interactionModeInput.value;
         state.trace.wasPausedByGate = false;
         state.pianoTileHits = new Set();
+        state.pianoHarmonyHits = new Set();
         state.pianoTileFeedback = [];
         syncTraceModeAssets();
         if (isTracingReady()) {
