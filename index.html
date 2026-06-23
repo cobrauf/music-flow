@@ -847,10 +847,16 @@
           isPanning: false,
           panPointerId: null,
           panStart: null,
+          activePointers: new Map(),
+          pinch: null,
           highlightColor: "#ffdf40",
           highlightBrightness: 1,
           threshold: 28,
           gate: "idle",
+          feedbackAlpha: 0,
+          feedbackGate: "",
+          feedbackPoint: null,
+          feedbackUpdatedAt: 0,
           wasPausedByGate: false,
           resumePromise: null
         }
@@ -1612,6 +1618,7 @@
           drawTraceHotspot();
         }
         drawTraceTouchGlow(now);
+        drawTraceGateFeedback(width, height, now);
         ctx.save();
         ctx.strokeStyle = "rgba(102, 216, 203, 0.18)";
         ctx.lineWidth = 1;
@@ -1777,6 +1784,110 @@
         ctx.arc(point.x, point.y, radius * 1.15, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
+      }
+
+      function drawTraceGateFeedback(width, height, now) {
+        const activeGate = state.trace.isPointerDown && ["slow", "fast", "off"].includes(state.trace.gate)
+          ? state.trace.gate
+          : "";
+        const elapsed = state.trace.feedbackUpdatedAt
+          ? Math.min(80, now - state.trace.feedbackUpdatedAt)
+          : 16;
+        const targetAlpha = activeGate ? 1 : 0;
+        const fadeRate = targetAlpha > state.trace.feedbackAlpha ? 0.24 : 0.62;
+
+        state.trace.feedbackAlpha += (targetAlpha - state.trace.feedbackAlpha) * Math.min(1, fadeRate * (elapsed / 16));
+        state.trace.feedbackUpdatedAt = now;
+
+        if (activeGate) {
+          state.trace.feedbackGate = activeGate;
+          state.trace.feedbackPoint = state.trace.lastPoint
+            ? { x: state.trace.lastPoint.x, y: state.trace.lastPoint.y }
+            : state.trace.feedbackPoint;
+        }
+
+        if (state.trace.feedbackAlpha < 0.03) {
+          state.trace.feedbackAlpha = 0;
+          state.trace.feedbackGate = "";
+          state.trace.feedbackPoint = null;
+          return;
+        }
+
+        const feedback = getTraceGateFeedback(state.trace.feedbackGate || activeGate);
+        const point = state.trace.feedbackPoint;
+        if (!point) return;
+        const x = Math.max(104, Math.min(width - 104, point.x));
+        const y = Math.max(72, Math.min(height - 178, point.y - 56));
+        const paddingX = 18;
+        const boxHeight = 44;
+
+        ctx.save();
+        ctx.globalAlpha = state.trace.feedbackAlpha;
+        ctx.font = "800 16px Inter, system-ui, sans-serif";
+        const textWidth = ctx.measureText(feedback.label).width;
+        const boxWidth = Math.min(width - 32, Math.max(148, textWidth + paddingX * 2));
+        const left = x - boxWidth / 2;
+        const top = y - boxHeight / 2;
+
+        ctx.shadowColor = feedback.shadow;
+        ctx.shadowBlur = 18;
+        ctx.fillStyle = "rgba(6, 17, 20, 0.88)";
+        roundRect(ctx, left, top, boxWidth, boxHeight, 8);
+        ctx.fill();
+
+        ctx.shadowBlur = 0;
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = feedback.stroke;
+        roundRect(ctx, left + 0.5, top + 0.5, boxWidth - 1, boxHeight - 1, 8);
+        ctx.stroke();
+
+        ctx.fillStyle = feedback.color;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(feedback.label, x, y + 1);
+        ctx.restore();
+      }
+
+      function getTraceGateFeedback(gate) {
+        if (gate === "slow") {
+          return {
+            label: "Too slow",
+            color: "#edcb7e",
+            stroke: "rgba(237, 203, 126, 0.72)",
+            shadow: "rgba(237, 203, 126, 0.38)"
+          };
+        }
+
+        if (gate === "fast") {
+          return {
+            label: "Too fast",
+            color: "#e58ba8",
+            stroke: "rgba(229, 139, 168, 0.72)",
+            shadow: "rgba(229, 139, 168, 0.38)"
+          };
+        }
+
+        return {
+          label: isColoringMode() ? "Off image" : "Off stroke",
+          color: "#e58ba8",
+          stroke: "rgba(229, 139, 168, 0.72)",
+          shadow: "rgba(229, 139, 168, 0.38)"
+        };
+      }
+
+      function roundRect(context, x, y, width, height, radius) {
+        const safeRadius = Math.min(radius, width / 2, height / 2);
+        context.beginPath();
+        context.moveTo(x + safeRadius, y);
+        context.lineTo(x + width - safeRadius, y);
+        context.quadraticCurveTo(x + width, y, x + width, y + safeRadius);
+        context.lineTo(x + width, y + height - safeRadius);
+        context.quadraticCurveTo(x + width, y + height, x + width - safeRadius, y + height);
+        context.lineTo(x + safeRadius, y + height);
+        context.quadraticCurveTo(x, y + height, x, y + height - safeRadius);
+        context.lineTo(x, y + safeRadius);
+        context.quadraticCurveTo(x, y, x + safeRadius, y);
+        context.closePath();
       }
 
       function drawTimingBar(width, height) {
@@ -2372,6 +2483,84 @@
         const delta = Math.abs(event.deltaY) >= Math.abs(event.deltaX) ? event.deltaY : event.deltaX;
         const factor = Math.exp(-delta * 0.0018);
         setTraceZoom(state.trace.zoom * factor, anchor);
+      }
+
+      function getCanvasPointFromClient(clientX, clientY) {
+        const rect = canvas.getBoundingClientRect();
+        return {
+          x: clientX - rect.left,
+          y: clientY - rect.top
+        };
+      }
+
+      function recordTracePointer(event) {
+        if (!isTracingReady() || event.pointerType !== "touch") return;
+        state.trace.activePointers.set(event.pointerId, {
+          x: event.clientX,
+          y: event.clientY
+        });
+      }
+
+      function releaseTracePointer(event) {
+        state.trace.activePointers.delete(event.pointerId);
+        if (!state.trace.pinch) return;
+        const stillPinching = state.trace.pinch.ids.some((id) => state.trace.activePointers.has(id));
+        if (!stillPinching || state.trace.activePointers.size < 2) {
+          state.trace.pinch = null;
+        }
+      }
+
+      function getTouchPointerPair() {
+        return Array.from(state.trace.activePointers.entries()).slice(0, 2);
+      }
+
+      function getPinchMetrics(pair) {
+        if (pair.length < 2) return null;
+        const [firstEntry, secondEntry] = pair;
+        const first = firstEntry[1];
+        const second = secondEntry[1];
+        const midpointClient = {
+          x: (first.x + second.x) / 2,
+          y: (first.y + second.y) / 2
+        };
+        return {
+          ids: [firstEntry[0], secondEntry[0]],
+          distance: Math.max(1, Math.hypot(second.x - first.x, second.y - first.y)),
+          midpoint: getCanvasPointFromClient(midpointClient.x, midpointClient.y)
+        };
+      }
+
+      function startTracePinch() {
+        const metrics = getPinchMetrics(getTouchPointerPair());
+        if (!metrics) return false;
+
+        endTracing();
+        endTracePan();
+        state.trace.pinch = {
+          ids: metrics.ids,
+          distance: metrics.distance,
+          zoom: state.trace.zoom,
+          midpoint: metrics.midpoint
+        };
+        setTraceGate("ready");
+        return true;
+      }
+
+      function continueTracePinch() {
+        if (!state.trace.pinch) return false;
+        const pair = state.trace.pinch.ids
+          .map((id) => [id, state.trace.activePointers.get(id)])
+          .filter((entry) => Boolean(entry[1]));
+        const metrics = getPinchMetrics(pair);
+        if (!metrics) return false;
+
+        setTraceZoom(state.trace.pinch.zoom * (metrics.distance / state.trace.pinch.distance), metrics.midpoint);
+        panTraceBy(
+          metrics.midpoint.x - state.trace.pinch.midpoint.x,
+          metrics.midpoint.y - state.trace.pinch.midpoint.y
+        );
+        state.trace.pinch.midpoint = metrics.midpoint;
+        return true;
       }
 
       function endTracing() {
@@ -3108,6 +3297,11 @@
 
       canvas.addEventListener("pointerdown", (event) => {
         canvas.setPointerCapture(event.pointerId);
+        recordTracePointer(event);
+        if (state.trace.activePointers.size >= 2 && startTracePinch()) {
+          event.preventDefault();
+          return;
+        }
         if (shouldPanTrace(event)) {
           event.preventDefault();
           startTracePan(event);
@@ -3121,6 +3315,11 @@
       });
 
       canvas.addEventListener("pointermove", (event) => {
+        recordTracePointer(event);
+        if (continueTracePinch()) {
+          event.preventDefault();
+          return;
+        }
         if (continueTracePan(event)) {
           event.preventDefault();
           return;
@@ -3134,6 +3333,7 @@
       });
 
       function endTracePointer(event) {
+        releaseTracePointer(event);
         endTracePan(event);
         endTracing();
       }
