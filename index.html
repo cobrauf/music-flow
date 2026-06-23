@@ -630,6 +630,7 @@
                     <option value="off">Off</option>
                     <option value="tracing">Tracing</option>
                     <option value="coloring">Coloring</option>
+                    <option value="piano_tile">Piano Tile</option>
                   </select>
                 </label>
                 <label>
@@ -790,6 +791,8 @@
         pulses: [],
         touches: [],
         tileFlashes: [],
+        pianoTileHits: new Set(),
+        pianoTileFeedback: [],
         nextEventIndex: 0,
         startedAt: 0,
         pausedAt: 0,
@@ -937,12 +940,26 @@
         topMargin: 0.09,
         bottomMargin: 0.22
       };
+      const pianoTiles = {
+        lanes: 4,
+        travelMs: 2400,
+        hitWindowMs: 180
+      };
+      const essentiaConfig = {
+        wasmUrl: "https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia-wasm.web.js",
+        coreUrl: "https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia.js-core.js",
+        hopSize: 128,
+        minFrequency: 80,
+        maxFrequency: 1200,
+        minConfidence: 0.08
+      };
       const synth = {
         context: null,
         master: null,
         scale: [0, 2, 4, 7, 9],
         root: 261.63
       };
+      let essentiaLoadPromise = null;
 
       function resize() {
         const ratio = window.devicePixelRatio || 1;
@@ -1057,6 +1074,8 @@
         state.pulses = [];
         state.touches = [];
         state.tileFlashes = [];
+        state.pianoTileHits = new Set();
+        state.pianoTileFeedback = [];
         state.nextEventIndex = 0;
         state.pausedAt = 0;
         state.startedAt = performance.now();
@@ -1402,7 +1421,9 @@
             lane: Number(event.lane || 0),
             born: event.time_ms,
             intensity: Number(event.intensity || 0.5),
-            color: event.color || "#66d8cb"
+            color: event.color || "#66d8cb",
+            frequency_hz: event.frequency_hz,
+            midi_note: event.midi_note
           });
         }
 
@@ -1456,12 +1477,14 @@
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, width, height);
 
-        if (!isTracingMode()) {
+        if (!isTracingMode() && !isPianoTileMode()) {
           drawRegionGrid(width, height, now);
         }
         drawPulses(width, height, ms);
         drawTouches(width, height, now);
-        if (!isTracingMode()) {
+        if (isPianoTileMode()) {
+          drawPianoTiles(width, height, ms, now);
+        } else if (!isTracingMode()) {
           drawTimingBar(width, height);
           drawNodes(width, height, ms);
         }
@@ -1498,6 +1521,10 @@
 
       function isTraceInteractionMode() {
         return state.trace.mode === "tracing" || state.trace.mode === "coloring";
+      }
+
+      function isPianoTileMode() {
+        return state.trace.mode === "piano_tile";
       }
 
       function isColoringMode() {
@@ -1999,6 +2026,111 @@
         }
       }
 
+      function getPianoTileBounds(width, height) {
+        const laneGap = Math.max(8, width * 0.018);
+        const sideInset = Math.max(14, width * 0.045);
+        const usableWidth = width - sideInset * 2;
+        const laneWidth = usableWidth / pianoTiles.lanes;
+        const hitZoneHeight = Math.max(54, Math.min(82, height * 0.105));
+        const hitZoneTop = height * 0.72;
+        const hitZoneBottom = hitZoneTop + hitZoneHeight;
+
+        return {
+          sideInset,
+          laneGap,
+          laneWidth,
+          tileWidth: Math.max(28, laneWidth - laneGap),
+          tileHeight: Math.max(70, Math.min(118, height * 0.14)),
+          hitZoneTop,
+          hitZoneBottom,
+          hitCenterY: (hitZoneTop + hitZoneBottom) / 2
+        };
+      }
+
+      function pianoTileKey(event, index) {
+        return `${index}:${event.time_ms}:${event.lane || 0}`;
+      }
+
+      function getPianoTileX(bounds, lane) {
+        const safeLane = Math.max(0, Math.min(pianoTiles.lanes - 1, Number(lane || 0)));
+        return bounds.sideInset + safeLane * bounds.laneWidth + (bounds.laneWidth - bounds.tileWidth) / 2;
+      }
+
+      function getPianoTileY(bounds, eventTimeMs, ms) {
+        const lead = eventTimeMs - ms;
+        return bounds.hitCenterY - bounds.tileHeight / 2 - (lead / pianoTiles.travelMs) * (bounds.hitCenterY + bounds.tileHeight);
+      }
+
+      function drawPianoTiles(width, height, ms, now) {
+        const bounds = getPianoTileBounds(width, height);
+
+        ctx.save();
+        ctx.lineWidth = 1;
+        for (let lane = 0; lane < pianoTiles.lanes; lane += 1) {
+          const x = getPianoTileX(bounds, lane);
+          ctx.fillStyle = lane % 2 === 0 ? "rgba(255, 255, 255, 0.035)" : "rgba(255, 255, 255, 0.018)";
+          ctx.fillRect(x, height * 0.08, bounds.tileWidth, height * 0.82);
+        }
+
+        ctx.fillStyle = "rgba(237, 203, 126, 0.14)";
+        ctx.fillRect(bounds.sideInset, bounds.hitZoneTop, width - bounds.sideInset * 2, bounds.hitZoneBottom - bounds.hitZoneTop);
+        ctx.strokeStyle = "rgba(237, 203, 126, 0.66)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(bounds.sideInset, bounds.hitZoneTop);
+        ctx.lineTo(width - bounds.sideInset, bounds.hitZoneTop);
+        ctx.moveTo(bounds.sideInset, bounds.hitZoneBottom);
+        ctx.lineTo(width - bounds.sideInset, bounds.hitZoneBottom);
+        ctx.stroke();
+
+        const spawnEvents = state.map.events
+          .map((event, index) => ({ event, index }))
+          .filter(({ event }) => event.action === "spawn_node");
+
+        for (const { event, index } of spawnEvents) {
+          const eventTime = Number(event.time_ms || 0);
+          const y = getPianoTileY(bounds, eventTime, ms);
+          if (y > height + bounds.tileHeight || y < -bounds.tileHeight * 1.4) continue;
+
+          const key = pianoTileKey(event, index);
+          const hit = state.pianoTileHits.has(key);
+          const lane = Math.max(0, Math.min(pianoTiles.lanes - 1, Number(event.lane || 0)));
+          const x = getPianoTileX(bounds, lane);
+          const intensity = Math.max(0.25, Math.min(1, Number(event.intensity || 0.5)));
+          const color = event.color || "#66d8cb";
+          const isActive = Math.abs(ms - eventTime) <= pianoTiles.hitWindowMs;
+
+          roundRect(ctx, x, y, bounds.tileWidth, bounds.tileHeight, 7);
+          ctx.fillStyle = hit ? "rgba(255, 255, 255, 0.12)" : color;
+          ctx.globalAlpha = hit ? 0.22 : 0.5 + intensity * 0.34;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = isActive && !hit ? "rgba(255, 255, 255, 0.82)" : "rgba(255, 255, 255, 0.22)";
+          ctx.lineWidth = isActive && !hit ? 2.5 : 1;
+          ctx.stroke();
+
+          if (isActive && !hit) {
+            ctx.fillStyle = "rgba(255, 255, 255, 0.18)";
+            roundRect(ctx, x + 6, y + 6, bounds.tileWidth - 12, Math.max(8, bounds.tileHeight * 0.12), 4);
+            ctx.fill();
+          }
+        }
+
+        state.pianoTileFeedback = state.pianoTileFeedback.filter((feedback) => now - feedback.born < 520);
+        for (const feedback of state.pianoTileFeedback) {
+          const age = now - feedback.born;
+          const t = age / 520;
+          ctx.beginPath();
+          ctx.arc(feedback.x * width, feedback.y * height, 16 + t * 72, 0, Math.PI * 2);
+          ctx.strokeStyle = feedback.color;
+          ctx.globalAlpha = (1 - t) * 0.72;
+          ctx.lineWidth = 3;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+        ctx.restore();
+      }
+
       function interactWithStage(event, shouldPlayTone = true) {
         const rect = canvas.getBoundingClientRect();
         const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
@@ -2024,6 +2156,75 @@
 
         collectNearbyNode(x, y, ms);
         state.lastAction = "touch_ripple";
+      }
+
+      function interactWithPianoTiles(event) {
+        const rect = canvas.getBoundingClientRect();
+        const x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+        const y = Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
+        const now = performance.now();
+        const ms = playbackMs(now);
+        const bounds = getPianoTileBounds(canvas.clientWidth, canvas.clientHeight);
+        const pointerX = x * canvas.clientWidth;
+        const pointerY = y * canvas.clientHeight;
+        let best = null;
+
+        state.map.events.forEach((candidate, index) => {
+          if (candidate.action !== "spawn_node") return;
+          const key = pianoTileKey(candidate, index);
+          if (state.pianoTileHits.has(key)) return;
+          const timingDelta = Math.abs(ms - Number(candidate.time_ms || 0));
+          if (timingDelta > pianoTiles.hitWindowMs) return;
+
+          const tileX = getPianoTileX(bounds, Number(candidate.lane || 0));
+          const tileY = getPianoTileY(bounds, Number(candidate.time_ms || 0), ms);
+          const insideTile = pointerX >= tileX &&
+            pointerX <= tileX + bounds.tileWidth &&
+            pointerY >= tileY &&
+            pointerY <= tileY + bounds.tileHeight;
+          const overlapsZone = tileY <= bounds.hitZoneBottom && tileY + bounds.tileHeight >= bounds.hitZoneTop;
+          if (!insideTile || !overlapsZone) return;
+
+          if (!best || timingDelta < best.timingDelta) {
+            best = { event: candidate, index, key, timingDelta };
+          }
+        });
+
+        if (!best) return;
+
+        state.pianoTileHits.add(best.key);
+        const color = best.event.color || "#edcb7e";
+        state.touches.push({ x, y, born: now, color });
+        state.pulses.push({
+          born: ms,
+          x,
+          y,
+          intensity: 0.58,
+          color
+        });
+        state.pianoTileFeedback.push({ x, y, born: now, color });
+        playTileTone(getPianoTileToneEvent(best.event, best.index));
+        if (navigator.vibrate) {
+          navigator.vibrate(20);
+        }
+        state.lastAction = "piano_tile_hit";
+      }
+
+      function getPianoTileToneEvent(event, index) {
+        const hasTrackPitch = Number.isFinite(Number(event.frequency_hz)) ||
+          Number.isFinite(Number(event.midi_note));
+        if (hasTrackPitch) return event;
+
+        return {
+          ...event,
+          fallback_midi_note: pianoTileFallbackMidiNote(event, index)
+        };
+      }
+
+      function pianoTileFallbackMidiNote(event, index) {
+        const fallbackMelody = [60, 64, 67, 72, 69, 67, 64, 62, 65, 69, 72, 76];
+        const timeBucket = Math.max(0, Math.floor(Number(event.time_ms || 0) / 600));
+        return fallbackMelody[(index + timeBucket) % fallbackMelody.length];
       }
 
       function startTracing(event) {
@@ -2627,6 +2828,12 @@
       function updateTraceStatus(gate = state.trace.gate) {
         traceStatus.classList.remove("good", "warn", "hot");
 
+        if (isPianoTileMode()) {
+          traceStatus.textContent = "Tap tiles in the zone.";
+          traceStatus.classList.add("good");
+          return;
+        }
+
         if (!isTraceInteractionMode()) {
           traceStatus.textContent = "Interaction test off.";
           return;
@@ -2728,8 +2935,11 @@
         shimmer.type = "triangle";
         shimmer.frequency.setValueAtTime(frequency * 2, now);
 
+        const tileCol = Number.isFinite(Number(tile.col)) ? Number(tile.col) : Number(tile.lane || 0);
+        const tileRow = Number.isFinite(Number(tile.row)) ? Number(tile.row) : 3;
+
         filter.type = "lowpass";
-        filter.frequency.setValueAtTime(900 + tile.col * 260 + (grid.rows - tile.row) * 70, now);
+        filter.frequency.setValueAtTime(900 + tileCol * 260 + (grid.rows - tileRow) * 70, now);
         filter.Q.value = 0.6;
 
         gain.gain.setValueAtTime(0.0001, now);
@@ -2753,8 +2963,25 @@
       }
 
       function tileToFrequency(tile) {
-        const invertedRow = grid.rows - 1 - tile.row;
-        const scaleIndex = tile.col + invertedRow * 2;
+        const eventFrequency = Number(tile.frequency_hz);
+        if (Number.isFinite(eventFrequency) && eventFrequency >= 55 && eventFrequency <= 1760) {
+          return eventFrequency;
+        }
+
+        const midiNote = Number(tile.midi_note);
+        if (Number.isFinite(midiNote) && midiNote >= 21 && midiNote <= 108) {
+          return 440 * Math.pow(2, (midiNote - 69) / 12);
+        }
+
+        const fallbackMidiNote = Number(tile.fallback_midi_note);
+        if (Number.isFinite(fallbackMidiNote) && fallbackMidiNote >= 21 && fallbackMidiNote <= 108) {
+          return 440 * Math.pow(2, (fallbackMidiNote - 69) / 12);
+        }
+
+        const hasGridTile = Number.isFinite(Number(tile.row)) && Number.isFinite(Number(tile.col));
+        const invertedRow = hasGridTile ? grid.rows - 1 - Number(tile.row) : 2;
+        const lane = Number.isFinite(Number(tile.lane)) ? Number(tile.lane) : Number(tile.col || 0);
+        const scaleIndex = Math.max(0, Math.min(grid.cols - 1, lane)) + invertedRow * 2;
         const octave = Math.floor(scaleIndex / synth.scale.length);
         const semitone = synth.scale[scaleIndex % synth.scale.length] + octave * 12;
         return synth.root * Math.pow(2, semitone / 12);
@@ -3028,7 +3255,14 @@
 
           const durationMs = Math.round(audioBuffer.duration * 1000);
           const bpm = estimateBpm(flux, sampleRate, hopSize);
-          const onsets = pickOnsets(flux, sampleRate, hopSize, durationMs);
+          let onsets = pickOnsets(flux, sampleRate, hopSize, durationMs, channelData);
+          try {
+            adminStatus.textContent = "Extracting melody pitch with Essentia...";
+            const melodyContour = await extractMelodyContour(channelData, sampleRate);
+            onsets = applyMelodyContourToOnsets(onsets, melodyContour);
+          } catch (error) {
+            console.warn("Essentia melody extraction unavailable. Using fallback pitch estimates.", error);
+          }
           return { bpm, duration_ms: durationMs, onsets };
         } finally {
           if (audioContext.close) {
@@ -3073,7 +3307,7 @@
         return bestBpm;
       }
 
-      function pickOnsets(flux, sampleRate, hopSize, durationMs) {
+      function pickOnsets(flux, sampleRate, hopSize, durationMs, channelData = null) {
         if (flux.length === 0) return [];
         const sorted = [...flux].sort((a, b) => a - b);
         const threshold = sorted[Math.floor(sorted.length * 0.82)] || 0;
@@ -3088,9 +3322,14 @@
           const isPeak = value > threshold && value >= flux[index - 1] && value >= flux[index + 1];
           if (!isPeak || timeMs - lastMs < 420 || timeMs > durationMs - 250) continue;
 
+          const pitch = channelData ? estimatePitchAtTime(channelData, sampleRate, timeMs) : null;
           onsets.push({
             time_ms: timeMs,
-            intensity: Math.max(0.2, Math.min(1, value / maxFlux))
+            intensity: Math.max(0.2, Math.min(1, value / maxFlux)),
+            frequency_hz: pitch && pitch.confidence >= 0.42 ? pitch.frequency_hz : undefined,
+            midi_note: pitch && pitch.confidence >= 0.42 ? frequencyToMidi(pitch.frequency_hz) : undefined,
+            pitch_confidence: pitch ? pitch.confidence : undefined,
+            pitch_source: pitch && pitch.confidence >= 0.42 ? "autocorrelation" : undefined
           });
           lastMs = timeMs;
 
@@ -3098,6 +3337,202 @@
         }
 
         return onsets;
+      }
+
+      function estimatePitchAtTime(channelData, sampleRate, timeMs) {
+        const windowSize = 4096;
+        const center = Math.round((timeMs / 1000) * sampleRate);
+        const start = Math.max(0, Math.min(channelData.length - windowSize, center - Math.floor(windowSize / 2)));
+        if (start < 0 || start + windowSize > channelData.length) return null;
+
+        let rms = 0;
+        for (let index = 0; index < windowSize; index += 1) {
+          const sample = channelData[start + index];
+          rms += sample * sample;
+        }
+        rms = Math.sqrt(rms / windowSize);
+        if (rms < 0.012) return null;
+
+        const minLag = Math.floor(sampleRate / 1200);
+        const maxLag = Math.min(Math.floor(sampleRate / 70), Math.floor(windowSize / 2));
+        let bestLag = 0;
+        let bestScore = 0;
+
+        for (let lag = minLag; lag <= maxLag; lag += 1) {
+          let correlation = 0;
+          let energyA = 0;
+          let energyB = 0;
+          for (let index = 0; index < windowSize - lag; index += 1) {
+            const a = channelData[start + index];
+            const b = channelData[start + index + lag];
+            correlation += a * b;
+            energyA += a * a;
+            energyB += b * b;
+          }
+          const score = correlation / Math.sqrt(Math.max(0.000001, energyA * energyB));
+          if (score > bestScore) {
+            bestScore = score;
+            bestLag = lag;
+          }
+        }
+
+        if (!bestLag || bestScore < 0.32) return null;
+        return {
+          frequency_hz: Math.round((sampleRate / bestLag) * 10) / 10,
+          confidence: Math.max(0, Math.min(1, bestScore))
+        };
+      }
+
+      function frequencyToMidi(frequency) {
+        return Math.round(69 + 12 * Math.log2(frequency / 440));
+      }
+
+      async function loadEssentia() {
+        if (window.Essentia && window.EssentiaWASM && window.EssentiaWASM.ready) {
+          await window.EssentiaWASM.ready;
+          return { Essentia: window.Essentia, EssentiaWASM: window.EssentiaWASM };
+        }
+
+        if (!essentiaLoadPromise) {
+          essentiaLoadPromise = loadScript(essentiaConfig.wasmUrl)
+            .then(() => window.EssentiaWASM && window.EssentiaWASM.ready)
+            .then(() => loadScript(essentiaConfig.coreUrl))
+            .then(() => {
+              if (!window.Essentia || !window.EssentiaWASM) {
+                throw new Error("Essentia.js did not expose expected globals.");
+              }
+              return { Essentia: window.Essentia, EssentiaWASM: window.EssentiaWASM };
+            });
+        }
+
+        return essentiaLoadPromise;
+      }
+
+      function loadScript(src) {
+        return new Promise((resolve, reject) => {
+          const existing = document.querySelector(`script[src="${src}"]`);
+          if (existing) {
+            if (existing.dataset.loaded === "true") {
+              resolve();
+              return;
+            }
+            existing.addEventListener("load", () => resolve(), { once: true });
+            existing.addEventListener("error", () => reject(new Error(`Unable to load ${src}`)), { once: true });
+            return;
+          }
+
+          const script = document.createElement("script");
+          script.src = src;
+          script.async = true;
+          script.crossOrigin = "anonymous";
+          script.addEventListener("load", () => {
+            script.dataset.loaded = "true";
+            resolve();
+          }, { once: true });
+          script.addEventListener("error", () => reject(new Error(`Unable to load ${src}`)), { once: true });
+          document.head.appendChild(script);
+        });
+      }
+
+      async function extractMelodyContour(channelData, sampleRate) {
+        const { Essentia, EssentiaWASM } = await loadEssentia();
+        const essentia = new Essentia(EssentiaWASM);
+        let signal = null;
+        let equalLoudness = null;
+        let pitchResult = null;
+
+        try {
+          signal = essentia.arrayToVector(channelData);
+          equalLoudness = essentia.EqualLoudness(signal, sampleRate).signal;
+          pitchResult = essentia.PredominantPitchMelodia(
+            equalLoudness,
+            10,
+            3,
+            2048,
+            false,
+            0.8,
+            essentiaConfig.hopSize,
+            1,
+            40,
+            essentiaConfig.maxFrequency,
+            100,
+            essentiaConfig.minFrequency,
+            20,
+            0.9,
+            0.9,
+            27.5625,
+            55,
+            sampleRate,
+            100,
+            false,
+            0.2
+          );
+
+          return {
+            pitch: Array.from(essentia.vectorToArray(pitchResult.pitch)),
+            confidence: Array.from(essentia.vectorToArray(pitchResult.pitchConfidence)),
+            frameMs: (essentiaConfig.hopSize / sampleRate) * 1000
+          };
+        } finally {
+          deleteEssentiaVector(pitchResult && pitchResult.pitch);
+          deleteEssentiaVector(pitchResult && pitchResult.pitchConfidence);
+          deleteEssentiaVector(equalLoudness);
+          deleteEssentiaVector(signal);
+          if (essentia.delete) {
+            essentia.delete();
+          }
+        }
+      }
+
+      function deleteEssentiaVector(vector) {
+        if (vector && typeof vector.delete === "function") {
+          vector.delete();
+        }
+      }
+
+      function applyMelodyContourToOnsets(onsets, contour) {
+        if (!contour || !Array.isArray(contour.pitch) || contour.pitch.length === 0) return onsets;
+
+        return onsets.map((onset) => {
+          const melodyPitch = melodyPitchNearTime(contour, onset.time_ms);
+          if (!melodyPitch) return onset;
+
+          return {
+            ...onset,
+            frequency_hz: melodyPitch.frequency_hz,
+            midi_note: frequencyToMidi(melodyPitch.frequency_hz),
+            pitch_confidence: melodyPitch.confidence,
+            pitch_source: "melodia"
+          };
+        });
+      }
+
+      function melodyPitchNearTime(contour, timeMs) {
+        const centerIndex = Math.round(timeMs / contour.frameMs);
+        const radius = Math.max(1, Math.round(120 / contour.frameMs));
+        const candidates = [];
+
+        for (let index = centerIndex - radius; index <= centerIndex + radius; index += 1) {
+          const frequency = Number(contour.pitch[index]);
+          const confidence = Math.abs(Number(contour.confidence[index]));
+          if (!Number.isFinite(frequency) || !Number.isFinite(confidence)) continue;
+          if (frequency < essentiaConfig.minFrequency || frequency > essentiaConfig.maxFrequency) continue;
+          if (confidence < essentiaConfig.minConfidence) continue;
+          candidates.push({ frequency_hz: frequency, confidence, distance: Math.abs(index - centerIndex) });
+        }
+
+        if (candidates.length === 0) return null;
+        candidates.sort((a, b) => {
+          const scoreA = a.confidence - a.distance * 0.012;
+          const scoreB = b.confidence - b.distance * 0.012;
+          return scoreB - scoreA;
+        });
+
+        const best = candidates[0];
+        return {
+          frequency_hz: Math.round(best.frequency_hz * 10) / 10,
+          confidence: Math.max(0, Math.min(1, best.confidence))
+        };
       }
 
       function fallbackMap() {
@@ -3110,7 +3545,8 @@
             action: index % 5 === 0 ? "pulse_field" : "spawn_node",
             lane: index % 4,
             intensity: 0.45 + (index % 3) * 0.18,
-            color: index % 2 === 0 ? "#66d8cb" : "#edcb7e"
+            color: index % 2 === 0 ? "#66d8cb" : "#edcb7e",
+            midi_note: 60 + (index % 8)
           }))
         };
       }
@@ -3157,6 +3593,8 @@
       interactionModeInput.addEventListener("change", () => {
         state.trace.mode = interactionModeInput.value;
         state.trace.wasPausedByGate = false;
+        state.pianoTileHits = new Set();
+        state.pianoTileFeedback = [];
         syncTraceModeAssets();
         if (isTracingReady()) {
           setTraceGate("ready");
@@ -3311,6 +3749,10 @@
           startTracing(event);
           return;
         }
+        if (isPianoTileMode()) {
+          interactWithPianoTiles(event);
+          return;
+        }
         interactWithStage(event, true);
       });
 
@@ -3327,6 +3769,9 @@
         if (event.buttons !== 1 && event.pointerType !== "touch") return;
         if (isTracingReady()) {
           continueTracing(event);
+          return;
+        }
+        if (isPianoTileMode()) {
           return;
         }
         interactWithStage(event, false);

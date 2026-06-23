@@ -12,6 +12,10 @@ type AudioAnalysis = {
   onsets?: Array<{
     time_ms: number;
     intensity?: number;
+    frequency_hz?: number;
+    midi_note?: number;
+    pitch_confidence?: number;
+    pitch_source?: string;
   }>;
 };
 
@@ -22,6 +26,10 @@ type LevelMapEvent = {
   intensity?: number;
   color?: string;
   target_color?: string;
+  frequency_hz?: number;
+  midi_note?: number;
+  pitch_confidence?: number;
+  pitch_source?: string;
 };
 
 type LevelMap = {
@@ -30,6 +38,15 @@ type LevelMap = {
   bpm: number;
   duration_ms: number;
   events: LevelMapEvent[];
+};
+
+type NormalizedOnset = {
+  time_ms: number;
+  intensity: number;
+  frequency_hz?: number;
+  midi_note?: number;
+  pitch_confidence?: number;
+  pitch_source?: string;
 };
 
 const corsHeaders = {
@@ -135,7 +152,7 @@ function buildLevelMap(input: {
   bpm: number;
   durationMs: number;
   storagePath: string;
-  onsets: Array<{ time_ms: number; intensity: number }>;
+  onsets: NormalizedOnset[];
 }): LevelMap {
   const beatMs = Math.round(60000 / input.bpm);
   const colors = ["#66d8cb", "#edcb7e", "#b99cff", "#e58ba8"];
@@ -172,6 +189,10 @@ function buildLevelMap(input: {
       lane: index % 4,
       intensity: clampIntensity(0.35 + onset.intensity * 0.55),
       color: colors[index % colors.length],
+      frequency_hz: onset.frequency_hz,
+      midi_note: onset.midi_note,
+      pitch_confidence: onset.pitch_confidence,
+      pitch_source: onset.pitch_source,
     });
   }
 
@@ -185,7 +206,7 @@ function buildLevelMap(input: {
 }
 
 function fallbackOnsets(durationMs: number, beatMs: number) {
-  const onsets: Array<{ time_ms: number; intensity: number }> = [];
+  const onsets: NormalizedOnset[] = [];
   for (let time = beatMs; time < durationMs; time += beatMs * 2) {
     onsets.push({ time_ms: time + Math.round(beatMs * 0.9), intensity: 0.55 });
   }
@@ -198,6 +219,10 @@ function normalizeOnsets(onsets: AudioAnalysis["onsets"]) {
     .map((onset) => ({
       time_ms: Math.round(Number(onset.time_ms)),
       intensity: clampIntensity(Number(onset.intensity ?? 0.5)),
+      frequency_hz: clampFrequency(onset.frequency_hz),
+      midi_note: clampMidiNote(onset.midi_note),
+      pitch_confidence: clampPitchConfidence(onset.pitch_confidence),
+      pitch_source: normalizePitchSource(onset.pitch_source),
     }))
     .filter((onset) => Number.isFinite(onset.time_ms) && onset.time_ms >= 0)
     .sort((a, b) => a.time_ms - b.time_ms)
@@ -217,6 +242,29 @@ function clampDuration(value: number) {
 function clampIntensity(value: number) {
   if (!Number.isFinite(value)) return 0.5;
   return Math.max(0.1, Math.min(1, value));
+}
+
+function clampFrequency(value: unknown) {
+  const frequency = Number(value);
+  if (!Number.isFinite(frequency) || frequency < 55 || frequency > 1760) return undefined;
+  return Math.round(frequency * 10) / 10;
+}
+
+function clampMidiNote(value: unknown) {
+  const midiNote = Number(value);
+  if (!Number.isFinite(midiNote) || midiNote < 21 || midiNote > 108) return undefined;
+  return Math.round(midiNote);
+}
+
+function clampPitchConfidence(value: unknown) {
+  const confidence = Number(value);
+  if (!Number.isFinite(confidence)) return undefined;
+  return Math.max(0, Math.min(1, confidence));
+}
+
+function normalizePitchSource(value: unknown) {
+  if (value !== "melodia" && value !== "autocorrelation" && value !== "manual") return undefined;
+  return value;
 }
 
 function validateLevelMap(levelMap: LevelMap) {

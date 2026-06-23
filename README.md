@@ -81,7 +81,11 @@ Minimum shape:
       "action": "spawn_node",
       "lane": 2,
       "intensity": 0.7,
-      "color": "#65d6ca"
+      "color": "#65d6ca",
+      "frequency_hz": 392,
+      "midi_note": 67,
+      "pitch_confidence": 0.74,
+      "pitch_source": "melodia"
     }
   ]
 }
@@ -89,7 +93,7 @@ Minimum shape:
 
 Supported MVP actions:
 
-- `spawn_node`: creates a descending hit node.
+- `spawn_node`: creates a descending hit node. Optional `frequency_hz` or `midi_note` values let interaction modes play a matching synth accent. `pitch_source` may be `melodia`, `autocorrelation`, or `manual`; clients use per-event fallback notes when pitch metadata is absent, so tile lanes never define pitch.
 - `pulse_field`: adds a soft canvas pulse.
 - `shift_visual_state`: changes the target visual color or mood.
 
@@ -138,7 +142,7 @@ The current migration intentionally disables RLS on `tracks` and grants broad ac
 }
 ```
 
-For Phase 2, it validates the request, marks the track as `processing`, accepts browser-derived BPM/duration/onset hints when available, builds a deterministic `level_map`, and marks the track `ready`. Phase 4 will replace the lightweight browser analysis with Essentia.js WASM and Gemini Flash choreography while preserving the same database contract.
+For Phase 2, it validates the request, marks the track as `processing`, accepts browser-derived BPM/duration/onset hints when available, passes through optional onset pitch estimates and pitch source labels, builds a deterministic `level_map`, and marks the track `ready`. Phase 4 will deepen the synthesis pipeline with Essentia.js and Gemini Flash choreography while preserving the same database contract.
 
 ## Static Prototype
 
@@ -149,10 +153,11 @@ The current `index.html` is the GitHub Pages prototype. It:
 - Falls back to `data/sample-level-map.json`.
 - Lets testers choose a local audio file for browser-only playback.
 - Uploads `.mp3` or `.wav` files to the `music-assets` bucket in fast MVP mode.
-- Estimates duration, BPM, and onset peaks locally with the Web Audio API before upload processing.
+- Estimates duration, BPM, onset peaks, and melody pitch locally before upload processing. It tries Essentia.js `PredominantPitchMelodia` first, then falls back to a lightweight autocorrelation estimate when Essentia is unavailable.
 - Creates a matching `tracks` row and invokes the deployed `process-track` Edge Function.
 - Provides a mobile-first 4x6 tappable region grid that plays soft pentatonic Web Audio tones over the track.
-- Includes a frontend-only Interaction Tests panel with tracing and coloring modes: tracing turns uploaded coloring-page-style images into traceable patterns, while coloring starts from a white page and restores uploaded image color with a freeform blotchy watercolor-style brush. Both gate music playback by mode-specific pointer speed controls.
+- Includes a frontend-only Interaction Tests panel with tracing, coloring, and Piano Tile modes: tracing turns uploaded coloring-page-style images into traceable patterns, coloring starts from a white page and restores uploaded image color with a freeform blotchy watercolor-style brush, and Piano Tile turns timed `spawn_node` events into four-lane falling tiles with a lower hit zone.
+- Reuses the Sound panel for independent backing-track and tap/tile-note volume. Piano Tile accents use Melodia/uploaded pitch metadata when available and fall back to an event-specific melody for older maps, never a fixed lane-to-note mapping.
 - Renders descending nodes and calm canvas pulses against the loaded timeline.
 
 Open `index.html` directly or use the deployed GitHub Pages URL.
