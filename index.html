@@ -745,6 +745,8 @@
                   <input class="file" id="upload-file" type="file" accept="audio/mpeg,audio/wav,audio/mp3,.mp3,.wav">
                 </label>
                 <button class="button primary" id="upload-process" type="button">Upload and Process</button>
+                <button class="button" id="reprocess-track" type="button">Rerun Processing for Selected Track</button>
+                <button class="button" id="audit-piano-tiles" type="button">Audit Piano Tile Notes</button>
                 <p class="status-note" id="admin-status">Waiting for audio.</p>
               </div>
             </div>
@@ -885,6 +887,8 @@
       const uploadArtistInput = document.getElementById("upload-artist");
       const uploadFileInput = document.getElementById("upload-file");
       const uploadProcessButton = document.getElementById("upload-process");
+      const reprocessTrackButton = document.getElementById("reprocess-track");
+      const auditPianoTilesButton = document.getElementById("audit-piano-tiles");
       const adminStatus = document.getElementById("admin-status");
       const drawerOpenButton = document.getElementById("drawer-open");
       const drawerCloseButton = document.getElementById("drawer-close");
@@ -943,15 +947,19 @@
       const pianoTiles = {
         lanes: 4,
         travelMs: 2400,
-        hitWindowMs: 180
+        hitWindowMs: 360
       };
       const essentiaConfig = {
-        wasmUrl: "https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia-wasm.web.js",
-        coreUrl: "https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia.js-core.js",
+        wasmUrl: "https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia-wasm.es.js",
+        coreUrl: "https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia.js-core.es.js",
         hopSize: 128,
         minFrequency: 80,
         maxFrequency: 1200,
-        minConfidence: 0.08
+        minConfidence: 0.06,
+        minNoteDurationMs: 110,
+        noteMergeGapMs: 90,
+        noteChangeSemitones: 0.85,
+        melodiaTimeoutMs: 45000
       };
       const synth = {
         context: null,
@@ -2031,9 +2039,11 @@
         const sideInset = Math.max(14, width * 0.045);
         const usableWidth = width - sideInset * 2;
         const laneWidth = usableWidth / pianoTiles.lanes;
-        const hitZoneHeight = Math.max(54, Math.min(82, height * 0.105));
-        const hitZoneTop = height * 0.72;
-        const hitZoneBottom = hitZoneTop + hitZoneHeight;
+        const baseHitZoneHeight = Math.max(54, Math.min(82, height * 0.105));
+        const hitZoneHeight = baseHitZoneHeight * 2;
+        const hitCenterY = height * 0.72 + baseHitZoneHeight / 2;
+        const hitZoneTop = hitCenterY - hitZoneHeight / 2;
+        const hitZoneBottom = hitCenterY + hitZoneHeight / 2;
 
         return {
           sideInset,
@@ -2043,7 +2053,7 @@
           tileHeight: Math.max(70, Math.min(118, height * 0.14)),
           hitZoneTop,
           hitZoneBottom,
-          hitCenterY: (hitZoneTop + hitZoneBottom) / 2
+          hitCenterY
         };
       }
 
@@ -2083,11 +2093,10 @@
         ctx.lineTo(width - bounds.sideInset, bounds.hitZoneBottom);
         ctx.stroke();
 
-        const spawnEvents = state.map.events
+        const tileEvents = getPianoTileEvents()
           .map((event, index) => ({ event, index }))
-          .filter(({ event }) => event.action === "spawn_node");
 
-        for (const { event, index } of spawnEvents) {
+        for (const { event, index } of tileEvents) {
           const eventTime = Number(event.time_ms || 0);
           const y = getPianoTileY(bounds, eventTime, ms);
           if (y > height + bounds.tileHeight || y < -bounds.tileHeight * 1.4) continue;
@@ -2167,23 +2176,21 @@
         const bounds = getPianoTileBounds(canvas.clientWidth, canvas.clientHeight);
         const pointerX = x * canvas.clientWidth;
         const pointerY = y * canvas.clientHeight;
+        const lane = getPianoTileLaneAt(pointerX, bounds);
         let best = null;
 
-        state.map.events.forEach((candidate, index) => {
-          if (candidate.action !== "spawn_node") return;
+        if (lane === null || pointerY < bounds.hitZoneTop || pointerY > bounds.hitZoneBottom) return;
+
+        getPianoTileEvents().forEach((candidate, index) => {
           const key = pianoTileKey(candidate, index);
           if (state.pianoTileHits.has(key)) return;
+          if (Math.max(0, Math.min(pianoTiles.lanes - 1, Number(candidate.lane || 0))) !== lane) return;
           const timingDelta = Math.abs(ms - Number(candidate.time_ms || 0));
           if (timingDelta > pianoTiles.hitWindowMs) return;
 
-          const tileX = getPianoTileX(bounds, Number(candidate.lane || 0));
           const tileY = getPianoTileY(bounds, Number(candidate.time_ms || 0), ms);
-          const insideTile = pointerX >= tileX &&
-            pointerX <= tileX + bounds.tileWidth &&
-            pointerY >= tileY &&
-            pointerY <= tileY + bounds.tileHeight;
           const overlapsZone = tileY <= bounds.hitZoneBottom && tileY + bounds.tileHeight >= bounds.hitZoneTop;
-          if (!insideTile || !overlapsZone) return;
+          if (!overlapsZone) return;
 
           if (!best || timingDelta < best.timingDelta) {
             best = { event: candidate, index, key, timingDelta };
@@ -2225,6 +2232,18 @@
         const fallbackMelody = [60, 64, 67, 72, 69, 67, 64, 62, 65, 69, 72, 76];
         const timeBucket = Math.max(0, Math.floor(Number(event.time_ms || 0) / 600));
         return fallbackMelody[(index + timeBucket) % fallbackMelody.length];
+      }
+
+      function getPianoTileLaneAt(pointerX, bounds) {
+        if (pointerX < bounds.sideInset || pointerX > canvas.clientWidth - bounds.sideInset) return null;
+        return Math.max(0, Math.min(pianoTiles.lanes - 1, Math.floor((pointerX - bounds.sideInset) / bounds.laneWidth)));
+      }
+
+      function getPianoTileEvents() {
+        const authoredTiles = state.map.events.filter((event) => event.action === "piano_tile");
+        return authoredTiles.length > 0
+          ? authoredTiles
+          : state.map.events.filter((event) => event.action === "spawn_node");
       }
 
       function startTracing(event) {
@@ -3141,8 +3160,9 @@
 
         adminStatus.textContent = "Analyzing local audio timing...";
         const analysis = await analyzeAudioFile(file);
+        const melodyNoteCount = Array.isArray(analysis.melody_notes) ? analysis.melody_notes.length : 0;
 
-        adminStatus.textContent = "Uploading audio to SB Storage...";
+        adminStatus.textContent = `Uploading audio to SB Storage... ${melodyNoteCount} melody note${melodyNoteCount === 1 ? "" : "s"} found.`;
         const uploadResponse = await fetch(storageUrl, {
           method: "POST",
           headers: {
@@ -3214,6 +3234,164 @@
         adminStatus.textContent = `"${title}" is ready.`;
       }
 
+      async function reprocessSelectedTrack() {
+        const { baseUrl, anonKey } = getSbConfig();
+        const track = state.tracks.find((item) => item.id === state.selectedTrackId);
+
+        if (!track || track.id === "sample" || track.id === "fallback") {
+          throw new Error("Select a Supabase track first.");
+        }
+
+        const audioUrl = track.audio_url || audio.currentSrc || audio.src;
+        if (!audioUrl || audioUrl.startsWith("blob:")) {
+          throw new Error("Selected track needs a public audio URL.");
+        }
+
+        adminStatus.textContent = `Fetching "${track.title || "selected track"}"...`;
+        const audioResponse = await fetch(audioUrl);
+        if (!audioResponse.ok) {
+          throw new Error(`Audio fetch failed with ${audioResponse.status}.`);
+        }
+
+        adminStatus.textContent = "Analyzing selected track...";
+        const analysis = await analyzeAudioBlob(await audioResponse.blob());
+        const melodyNoteCount = Array.isArray(analysis.melody_notes) ? analysis.melody_notes.length : 0;
+
+        adminStatus.textContent = `Rerunning processing... ${melodyNoteCount} melody note${melodyNoteCount === 1 ? "" : "s"} found.`;
+        const processResponse = await fetch(`${baseUrl}/functions/v1/process-track`, {
+          method: "POST",
+          headers: {
+            apikey: anonKey,
+            Authorization: `Bearer ${anonKey}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ track_id: track.id, analysis })
+        });
+
+        if (!processResponse.ok) {
+          const errorBody = await processResponse.text();
+          throw new Error(`Processing failed with ${processResponse.status}: ${errorBody}`);
+        }
+
+        adminStatus.textContent = "Track reprocessed. Refreshing catalog...";
+        await loadSupabaseTracks();
+        const readyTrack = state.tracks.find((item) => item.id === track.id);
+        if (readyTrack) {
+          selectTrack(readyTrack);
+        }
+        adminStatus.textContent = `"${track.title || "Selected track"}" was reprocessed.`;
+      }
+
+      async function auditSelectedPianoTiles() {
+        const track = state.tracks.find((item) => item.id === state.selectedTrackId);
+        if (!track || track.id === "sample" || track.id === "fallback") {
+          throw new Error("Select a Supabase track first.");
+        }
+
+        const tileEvents = getPianoTileEvents();
+        if (tileEvents.length === 0) {
+          throw new Error("Selected track has no piano tile events.");
+        }
+
+        const audioUrl = track.audio_url || audio.currentSrc || audio.src;
+        if (!audioUrl || audioUrl.startsWith("blob:")) {
+          throw new Error("Selected track needs a public audio URL.");
+        }
+
+        adminStatus.textContent = `Auditing ${tileEvents.length} tile notes...`;
+        const audioResponse = await fetch(audioUrl);
+        if (!audioResponse.ok) {
+          throw new Error(`Audio fetch failed with ${audioResponse.status}.`);
+        }
+
+        const audioBlob = await audioResponse.blob();
+        adminStatus.textContent = "Preparing reference melody extraction...";
+        const contour = await extractMelodyContourFromBlob(audioBlob);
+        const auditRows = tileEvents.map((event, index) => auditPianoTileEvent(event, index, contour));
+        const rowsWithExpected = auditRows.filter((row) => row.expected_hz);
+        const missingTilePitch = auditRows.filter((row) => !row.tile_hz).length;
+        const missingReference = auditRows.filter((row) => !row.expected_hz).length;
+        const closeRows = auditRows.filter((row) => Number.isFinite(row.cents_error) && Math.abs(row.cents_error) <= 75);
+        const largeMisses = auditRows.filter((row) => Number.isFinite(row.cents_error) && Math.abs(row.cents_error) > 150);
+        const medianError = median(auditRows
+          .map((row) => Math.abs(row.cents_error))
+          .filter((value) => Number.isFinite(value)));
+
+        window.musicFlowLastPianoTileAudit = auditRows;
+        console.table(auditRows);
+        console.info("Piano tile audit summary", {
+          tileCount: auditRows.length,
+          compared: rowsWithExpected.length,
+          close: closeRows.length,
+          largeMisses: largeMisses.length,
+          missingTilePitch,
+          missingReference,
+          medianAbsCents: Math.round(medianError || 0)
+        });
+
+        adminStatus.textContent = `Audit: ${closeRows.length}/${rowsWithExpected.length} close, ${largeMisses.length} large misses, ${missingTilePitch} missing tile pitches, ${missingReference} no reference. Details in console.`;
+      }
+
+      async function extractMelodyContourFromBlob(blob) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextClass) {
+          throw new Error("Web Audio is not available.");
+        }
+
+        const arrayBuffer = await blob.arrayBuffer();
+        const audioContext = new AudioContextClass();
+        try {
+          const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+          return await extractMelodyContour(audioBuffer.getChannelData(0), audioBuffer.sampleRate);
+        } finally {
+          if (audioContext.close) {
+            audioContext.close();
+          }
+        }
+      }
+
+      function auditPianoTileEvent(event, index, contour) {
+        const tileHz = tileEventFrequency(event);
+        const expected = melodyPitchNearTime(contour, Number(event.time_ms || 0));
+        const expectedHz = expected && expected.frequency_hz;
+        const centsError = tileHz && expectedHz
+          ? Math.round(1200 * Math.log2(tileHz / expectedHz))
+          : null;
+        const semitoneError = Number.isFinite(centsError) ? Math.round(centsError / 100) : null;
+
+        return {
+          index,
+          action: event.action,
+          time_ms: Number(event.time_ms || 0),
+          lane: Number(event.lane || 0),
+          tile_hz: tileHz ? Math.round(tileHz * 10) / 10 : null,
+          tile_midi: tileHz ? frequencyToMidi(tileHz) : null,
+          tile_source: event.pitch_source || "fallback",
+          expected_hz: expectedHz || null,
+          expected_midi: expectedHz ? frequencyToMidi(expectedHz) : null,
+          expected_confidence: expected ? Math.round(expected.confidence * 1000) / 1000 : null,
+          cents_error: centsError,
+          semitone_error: semitoneError
+        };
+      }
+
+      function tileEventFrequency(event) {
+        const frequency = Number(event.frequency_hz);
+        if (Number.isFinite(frequency) && frequency >= 55 && frequency <= 1760) return frequency;
+
+        const midiNote = Number(event.midi_note);
+        if (Number.isFinite(midiNote) && midiNote >= 21 && midiNote <= 108) {
+          return 440 * Math.pow(2, (midiNote - 69) / 12);
+        }
+
+        const fallbackMidiNote = Number(event.fallback_midi_note);
+        if (Number.isFinite(fallbackMidiNote) && fallbackMidiNote >= 21 && fallbackMidiNote <= 108) {
+          return 440 * Math.pow(2, (fallbackMidiNote - 69) / 12);
+        }
+
+        return null;
+      }
+
       function slugify(value) {
         return value
           .toLowerCase()
@@ -3223,12 +3401,16 @@
       }
 
       async function analyzeAudioFile(file) {
+        return analyzeAudioBlob(file);
+      }
+
+      async function analyzeAudioBlob(blob) {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
         if (!AudioContextClass) {
           return { bpm: 72, duration_ms: 64000, onsets: [] };
         }
 
-        const arrayBuffer = await file.arrayBuffer();
+        const arrayBuffer = await blob.arrayBuffer();
         const audioContext = new AudioContextClass();
         try {
           const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
@@ -3256,14 +3438,15 @@
           const durationMs = Math.round(audioBuffer.duration * 1000);
           const bpm = estimateBpm(flux, sampleRate, hopSize);
           let onsets = pickOnsets(flux, sampleRate, hopSize, durationMs, channelData);
+          let melodyNotes = [];
           try {
-            adminStatus.textContent = "Extracting melody pitch with Essentia...";
+            adminStatus.textContent = "Preparing melody extraction...";
             const melodyContour = await extractMelodyContour(channelData, sampleRate);
-            onsets = applyMelodyContourToOnsets(onsets, melodyContour);
+            melodyNotes = segmentMelodyNotes(melodyContour);
           } catch (error) {
             console.warn("Essentia melody extraction unavailable. Using fallback pitch estimates.", error);
           }
-          return { bpm, duration_ms: durationMs, onsets };
+          return { bpm, duration_ms: durationMs, onsets, melody_notes: melodyNotes };
         } finally {
           if (audioContext.close) {
             audioContext.close();
@@ -3388,53 +3571,236 @@
       }
 
       async function loadEssentia() {
-        if (window.Essentia && window.EssentiaWASM && window.EssentiaWASM.ready) {
-          await window.EssentiaWASM.ready;
-          return { Essentia: window.Essentia, EssentiaWASM: window.EssentiaWASM };
-        }
-
         if (!essentiaLoadPromise) {
-          essentiaLoadPromise = loadScript(essentiaConfig.wasmUrl)
-            .then(() => window.EssentiaWASM && window.EssentiaWASM.ready)
-            .then(() => loadScript(essentiaConfig.coreUrl))
-            .then(() => {
-              if (!window.Essentia || !window.EssentiaWASM) {
-                throw new Error("Essentia.js did not expose expected globals.");
+          essentiaLoadPromise = Promise.all([
+            import(essentiaConfig.wasmUrl),
+            import(essentiaConfig.coreUrl)
+          ])
+            .then(([wasmExports, coreExports]) => {
+              const EssentiaWASM = wasmExports.EssentiaWASM;
+              const Essentia = coreExports.default;
+              if (!EssentiaWASM || typeof EssentiaWASM.EssentiaJS !== "function") {
+                throw new Error(`Essentia WASM export is invalid. Exports: ${formatEssentiaExportKeys(wasmExports)}`);
               }
-              return { Essentia: window.Essentia, EssentiaWASM: window.EssentiaWASM };
+              if (typeof Essentia !== "function") {
+                throw new Error(`Essentia core export is invalid. Exports: ${formatEssentiaExportKeys(coreExports)}`);
+              }
+              return { Essentia, EssentiaWASM };
+            })
+            .catch((error) => {
+              essentiaLoadPromise = null;
+              throw error;
             });
         }
 
         return essentiaLoadPromise;
       }
 
-      function loadScript(src) {
-        return new Promise((resolve, reject) => {
-          const existing = document.querySelector(`script[src="${src}"]`);
-          if (existing) {
-            if (existing.dataset.loaded === "true") {
-              resolve();
-              return;
-            }
-            existing.addEventListener("load", () => resolve(), { once: true });
-            existing.addEventListener("error", () => reject(new Error(`Unable to load ${src}`)), { once: true });
-            return;
-          }
+      function formatEssentiaExportKeys(exportsObject) {
+        if (!exportsObject || typeof exportsObject !== "object") return "none";
+        return Object.keys(exportsObject).slice(0, 12).join(", ") || "none";
+      }
 
-          const script = document.createElement("script");
-          script.src = src;
-          script.async = true;
-          script.crossOrigin = "anonymous";
-          script.addEventListener("load", () => {
-            script.dataset.loaded = "true";
-            resolve();
-          }, { once: true });
-          script.addEventListener("error", () => reject(new Error(`Unable to load ${src}`)), { once: true });
-          document.head.appendChild(script);
-        });
+      function logMelodyExtractionStep(step, details = {}) {
+        const elapsed = details.startedAt ? Math.round(performance.now() - details.startedAt) : 0;
+        const suffix = elapsed ? ` (${elapsed}ms)` : "";
+        const label = `Melody extraction: ${step}${suffix}`;
+        adminStatus.textContent = label;
+        console.info("[music-flow] " + label, details);
       }
 
       async function extractMelodyContour(channelData, sampleRate) {
+        if (window.Worker) {
+          return extractMelodyContourInWorker(channelData, sampleRate);
+        }
+
+        return extractMelodyContourOnMainThread(channelData, sampleRate);
+      }
+
+      function extractMelodyContourInWorker(channelData, sampleRate) {
+        return new Promise((resolve, reject) => {
+          const startedAt = performance.now();
+          logMelodyExtractionStep("starting worker", {
+            startedAt,
+            sampleRate,
+            samples: channelData.length,
+            durationMs: Math.round((channelData.length / sampleRate) * 1000),
+            timeoutMs: essentiaConfig.melodiaTimeoutMs
+          });
+          const workerUrl = URL.createObjectURL(new Blob([createEssentiaWorkerScript()], { type: "text/javascript" }));
+          const worker = new Worker(workerUrl, { type: "module" });
+          let settled = false;
+          const timeout = window.setTimeout(() => {
+            logMelodyExtractionStep("timed out, falling back", { startedAt });
+            finish(() => reject(new Error("Essentia melody extraction timed out. Using fallback pitch estimates.")));
+          }, essentiaConfig.melodiaTimeoutMs);
+
+          function finish(callback) {
+            if (settled) return;
+            settled = true;
+            window.clearTimeout(timeout);
+            worker.terminate();
+            URL.revokeObjectURL(workerUrl);
+            callback();
+          }
+
+          worker.addEventListener("message", (event) => {
+            const message = event.data || {};
+            if (message.type === "progress") {
+              logMelodyExtractionStep(message.step, {
+                startedAt,
+                ...(message.details || {})
+              });
+              return;
+            }
+            if (message.ok) {
+              logMelodyExtractionStep("complete", {
+                startedAt,
+                frames: message.contour && message.contour.pitch ? message.contour.pitch.length : 0
+              });
+              finish(() => resolve(message.contour));
+              return;
+            }
+            logMelodyExtractionStep("failed, falling back", {
+              startedAt,
+              error: message.error
+            });
+            finish(() => reject(new Error(message.error || "Essentia melody extraction failed.")));
+          });
+
+          worker.addEventListener("error", (event) => {
+            logMelodyExtractionStep("worker error, falling back", {
+              startedAt,
+              error: event.message
+            });
+            finish(() => reject(new Error(event.message || "Essentia melody worker failed.")));
+          });
+
+          const samples = new Float32Array(channelData);
+          worker.postMessage({
+            channelData: samples.buffer,
+            sampleRate,
+            config: {
+              wasmUrl: essentiaConfig.wasmUrl,
+              coreUrl: essentiaConfig.coreUrl,
+              hopSize: essentiaConfig.hopSize,
+              minFrequency: essentiaConfig.minFrequency,
+              maxFrequency: essentiaConfig.maxFrequency
+            }
+          }, [samples.buffer]);
+        });
+      }
+
+      function createEssentiaWorkerScript() {
+        return `
+          function postProgress(step, details = {}) {
+            self.postMessage({ type: "progress", step, details });
+          }
+
+          async function loadEssentia(config) {
+            postProgress("loading Essentia modules");
+            const [wasmExports, coreExports] = await Promise.all([
+              import(config.wasmUrl),
+              import(config.coreUrl)
+            ]);
+            const EssentiaWASM = wasmExports.EssentiaWASM;
+            const Essentia = coreExports.default;
+            if (!EssentiaWASM || typeof EssentiaWASM.EssentiaJS !== "function") {
+              throw new Error("Essentia WASM export is invalid in worker.");
+            }
+            if (typeof Essentia !== "function") {
+              throw new Error("Essentia core export is invalid in worker.");
+            }
+            postProgress("Essentia modules loaded");
+            return { Essentia, EssentiaWASM };
+          }
+
+          function deleteEssentiaVector(vector) {
+            if (vector && typeof vector.delete === "function") {
+              vector.delete();
+            }
+          }
+
+          self.addEventListener("message", async (event) => {
+            const { channelData, sampleRate, config } = event.data;
+            let essentia = null;
+            let signal = null;
+            let equalLoudness = null;
+            let pitchResult = null;
+
+            try {
+              postProgress("initializing Essentia");
+              const { Essentia, EssentiaWASM } = await loadEssentia(config);
+              essentia = new Essentia(EssentiaWASM);
+              const samples = new Float32Array(channelData);
+              postProgress("preparing audio vector", {
+                samples: samples.length,
+                sampleRate,
+                durationMs: Math.round((samples.length / sampleRate) * 1000)
+              });
+              signal = essentia.arrayToVector(samples);
+              postProgress("applying equal loudness");
+              equalLoudness = essentia.EqualLoudness(signal, sampleRate).signal;
+              postProgress("running Melodia pitch extraction");
+              pitchResult = essentia.PredominantPitchMelodia(
+                equalLoudness,
+                10,
+                3,
+                2048,
+                false,
+                0.8,
+                config.hopSize,
+                1,
+                40,
+                config.maxFrequency,
+                100,
+                config.minFrequency,
+                20,
+                0.9,
+                0.9,
+                27.5625,
+                55,
+                sampleRate,
+                100,
+                false,
+                0.2
+              );
+
+              postProgress("converting Melodia result");
+              self.postMessage({
+                ok: true,
+                contour: {
+                  pitch: Array.from(essentia.vectorToArray(pitchResult.pitch)),
+                  confidence: Array.from(essentia.vectorToArray(pitchResult.pitchConfidence)),
+                  frameMs: (config.hopSize / sampleRate) * 1000
+                }
+              });
+            } catch (error) {
+              self.postMessage({
+                ok: false,
+                error: error && error.message ? error.message : String(error)
+              });
+            } finally {
+              deleteEssentiaVector(pitchResult && pitchResult.pitch);
+              deleteEssentiaVector(pitchResult && pitchResult.pitchConfidence);
+              deleteEssentiaVector(equalLoudness);
+              deleteEssentiaVector(signal);
+              if (essentia && essentia.delete) {
+                essentia.delete();
+              }
+            }
+          });
+        `;
+      }
+
+      async function extractMelodyContourOnMainThread(channelData, sampleRate) {
+        const startedAt = performance.now();
+        logMelodyExtractionStep("running on main thread", {
+          startedAt,
+          sampleRate,
+          samples: channelData.length,
+          durationMs: Math.round((channelData.length / sampleRate) * 1000)
+        });
         const { Essentia, EssentiaWASM } = await loadEssentia();
         const essentia = new Essentia(EssentiaWASM);
         let signal = null;
@@ -3442,8 +3808,11 @@
         let pitchResult = null;
 
         try {
+          logMelodyExtractionStep("preparing audio vector", { startedAt });
           signal = essentia.arrayToVector(channelData);
+          logMelodyExtractionStep("applying equal loudness", { startedAt });
           equalLoudness = essentia.EqualLoudness(signal, sampleRate).signal;
+          logMelodyExtractionStep("running Melodia pitch extraction", { startedAt });
           pitchResult = essentia.PredominantPitchMelodia(
             equalLoudness,
             10,
@@ -3468,6 +3837,7 @@
             0.2
           );
 
+          logMelodyExtractionStep("converting Melodia result", { startedAt });
           return {
             pitch: Array.from(essentia.vectorToArray(pitchResult.pitch)),
             confidence: Array.from(essentia.vectorToArray(pitchResult.pitchConfidence)),
@@ -3505,6 +3875,103 @@
             pitch_source: "melodia"
           };
         });
+      }
+
+      function segmentMelodyNotes(contour) {
+        if (!contour || !Array.isArray(contour.pitch) || contour.pitch.length === 0) return [];
+
+        const segments = [];
+        let active = null;
+
+        for (let index = 0; index < contour.pitch.length; index += 1) {
+          const frequency = Number(contour.pitch[index]);
+          const confidence = Math.abs(Number(contour.confidence[index]));
+          const voiced = Number.isFinite(frequency) &&
+            Number.isFinite(confidence) &&
+            frequency >= essentiaConfig.minFrequency &&
+            frequency <= essentiaConfig.maxFrequency &&
+            confidence >= essentiaConfig.minConfidence;
+          const timeMs = index * contour.frameMs;
+          const midi = voiced ? frequencyToMidiFloat(frequency) : null;
+
+          if (!voiced) {
+            if (active) {
+              active.lastVoicedMs = timeMs;
+            }
+            continue;
+          }
+
+          if (!active) {
+            active = startMelodySegment(index, timeMs, frequency, confidence, midi);
+            continue;
+          }
+
+          const gapMs = timeMs - active.lastVoicedMs;
+          const pitchDelta = Math.abs(midi - active.medianMidi);
+          if (gapMs > essentiaConfig.noteMergeGapMs || pitchDelta > essentiaConfig.noteChangeSemitones) {
+            pushMelodySegment(segments, active, contour.frameMs);
+            active = startMelodySegment(index, timeMs, frequency, confidence, midi);
+            continue;
+          }
+
+          active.endIndex = index;
+          active.lastVoicedMs = timeMs;
+          active.frequencies.push(frequency);
+          active.confidences.push(confidence);
+          active.midis.push(midi);
+          active.medianMidi = median(active.midis);
+        }
+
+        if (active) {
+          pushMelodySegment(segments, active, contour.frameMs);
+        }
+
+        return segments.slice(0, 220);
+      }
+
+      function startMelodySegment(index, timeMs, frequency, confidence, midi) {
+        return {
+          startIndex: index,
+          endIndex: index,
+          lastVoicedMs: timeMs,
+          frequencies: [frequency],
+          confidences: [confidence],
+          midis: [midi],
+          medianMidi: midi
+        };
+      }
+
+      function pushMelodySegment(segments, segment, frameMs) {
+        const startMs = Math.round(segment.startIndex * frameMs);
+        const endMs = Math.round((segment.endIndex + 1) * frameMs);
+        const durationMs = endMs - startMs;
+        if (durationMs < essentiaConfig.minNoteDurationMs || segment.frequencies.length < 3) return;
+
+        const medianFrequency = median(segment.frequencies);
+        const medianMidi = frequencyToMidi(medianFrequency);
+        const confidence = median(segment.confidences);
+
+        segments.push({
+          time_ms: startMs,
+          duration_ms: durationMs,
+          frequency_hz: Math.round(medianFrequency * 10) / 10,
+          midi_note: medianMidi,
+          pitch_confidence: Math.max(0, Math.min(1, confidence)),
+          pitch_source: "melodia"
+        });
+      }
+
+      function median(values) {
+        if (!values.length) return 0;
+        const sorted = [...values].sort((a, b) => a - b);
+        const middle = Math.floor(sorted.length / 2);
+        return sorted.length % 2 === 0
+          ? (sorted[middle - 1] + sorted[middle]) / 2
+          : sorted[middle];
+      }
+
+      function frequencyToMidiFloat(frequency) {
+        return 69 + 12 * Math.log2(frequency / 440);
       }
 
       function melodyPitchNearTime(contour, timeMs) {
@@ -3577,6 +4044,28 @@
           adminStatus.textContent = error instanceof Error ? error.message : "Upload/process failed.";
         } finally {
           uploadProcessButton.disabled = false;
+        }
+      });
+
+      reprocessTrackButton.addEventListener("click", async () => {
+        reprocessTrackButton.disabled = true;
+        try {
+          await reprocessSelectedTrack();
+        } catch (error) {
+          adminStatus.textContent = error instanceof Error ? error.message : "Reprocess failed.";
+        } finally {
+          reprocessTrackButton.disabled = false;
+        }
+      });
+
+      auditPianoTilesButton.addEventListener("click", async () => {
+        auditPianoTilesButton.disabled = true;
+        try {
+          await auditSelectedPianoTiles();
+        } catch (error) {
+          adminStatus.textContent = error instanceof Error ? error.message : "Audit failed.";
+        } finally {
+          auditPianoTilesButton.disabled = false;
         }
       });
 

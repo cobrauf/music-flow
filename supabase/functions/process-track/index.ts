@@ -17,15 +17,24 @@ type AudioAnalysis = {
     pitch_confidence?: number;
     pitch_source?: string;
   }>;
+  melody_notes?: Array<{
+    time_ms: number;
+    duration_ms?: number;
+    frequency_hz?: number;
+    midi_note?: number;
+    pitch_confidence?: number;
+    pitch_source?: string;
+  }>;
 };
 
 type LevelMapEvent = {
   time_ms: number;
-  action: "spawn_node" | "pulse_field" | "shift_visual_state";
+  action: "spawn_node" | "piano_tile" | "pulse_field" | "shift_visual_state";
   lane?: number;
   intensity?: number;
   color?: string;
   target_color?: string;
+  duration_ms?: number;
   frequency_hz?: number;
   midi_note?: number;
   pitch_confidence?: number;
@@ -43,6 +52,15 @@ type LevelMap = {
 type NormalizedOnset = {
   time_ms: number;
   intensity: number;
+  frequency_hz?: number;
+  midi_note?: number;
+  pitch_confidence?: number;
+  pitch_source?: string;
+};
+
+type NormalizedMelodyNote = {
+  time_ms: number;
+  duration_ms?: number;
   frequency_hz?: number;
   midi_note?: number;
   pitch_confidence?: number;
@@ -112,6 +130,7 @@ Deno.serve(async (request) => {
       durationMs: clampDuration(payload.analysis?.duration_ms ?? track.duration_ms ?? 64000),
       storagePath,
       onsets: normalizeOnsets(payload.analysis?.onsets),
+      melodyNotes: normalizeMelodyNotes(payload.analysis?.melody_notes),
     });
 
     validateLevelMap(levelMap);
@@ -153,6 +172,7 @@ function buildLevelMap(input: {
   durationMs: number;
   storagePath: string;
   onsets: NormalizedOnset[];
+  melodyNotes: NormalizedMelodyNote[];
 }): LevelMap {
   const beatMs = Math.round(60000 / input.bpm);
   const colors = ["#66d8cb", "#edcb7e", "#b99cff", "#e58ba8"];
@@ -196,6 +216,36 @@ function buildLevelMap(input: {
     });
   }
 
+  const melodyTileEvents: NormalizedMelodyNote[] = input.melodyNotes.length > 0
+    ? input.melodyNotes
+    : onsetEvents
+      .filter((onset) => onset.frequency_hz || onset.midi_note)
+      .map((onset) => ({
+        time_ms: onset.time_ms,
+        frequency_hz: onset.frequency_hz,
+        midi_note: onset.midi_note,
+        pitch_confidence: onset.pitch_confidence,
+        pitch_source: onset.pitch_source,
+      }));
+
+  for (let index = 0; index < melodyTileEvents.length; index += 1) {
+    const note = melodyTileEvents[index];
+    if (note.time_ms >= input.durationMs) continue;
+
+    events.push({
+      time_ms: note.time_ms,
+      action: "piano_tile",
+      lane: noteToLane(note, index),
+      duration_ms: note.duration_ms,
+      intensity: clampIntensity(0.45 + (note.pitch_confidence ?? 0.35) * 0.45),
+      color: colors[index % colors.length],
+      frequency_hz: note.frequency_hz,
+      midi_note: note.midi_note,
+      pitch_confidence: note.pitch_confidence,
+      pitch_source: note.pitch_source,
+    });
+  }
+
   return {
     schema_version: 1,
     theme: "aurora_ripple",
@@ -229,6 +279,36 @@ function normalizeOnsets(onsets: AudioAnalysis["onsets"]) {
     .slice(0, 240);
 }
 
+function normalizeMelodyNotes(notes: AudioAnalysis["melody_notes"]) {
+  if (!Array.isArray(notes)) return [];
+  return notes
+    .map((note) => ({
+      time_ms: Math.round(Number(note.time_ms)),
+      duration_ms: clampNoteDuration(note.duration_ms),
+      frequency_hz: clampFrequency(note.frequency_hz),
+      midi_note: clampMidiNote(note.midi_note),
+      pitch_confidence: clampPitchConfidence(note.pitch_confidence),
+      pitch_source: normalizePitchSource(note.pitch_source),
+    }))
+    .filter((note) => (
+      Number.isFinite(note.time_ms) &&
+      note.time_ms >= 0 &&
+      Boolean(note.frequency_hz || note.midi_note)
+    ))
+    .sort((a, b) => a.time_ms - b.time_ms)
+    .slice(0, 260);
+}
+
+function noteToLane(note: NormalizedMelodyNote, index: number) {
+  const midiNote = note.midi_note ?? (note.frequency_hz ? frequencyToMidi(note.frequency_hz) : undefined);
+  if (!Number.isFinite(midiNote)) return index % 4;
+  const octavePosition = ((Math.round(midiNote as number) % 12) + 12) % 12;
+  if (octavePosition <= 2) return 0;
+  if (octavePosition <= 5) return 1;
+  if (octavePosition <= 8) return 2;
+  return 3;
+}
+
 function clampBpm(value: number) {
   if (!Number.isFinite(value)) return 72;
   return Math.max(30, Math.min(220, Math.round(value)));
@@ -242,6 +322,12 @@ function clampDuration(value: number) {
 function clampIntensity(value: number) {
   if (!Number.isFinite(value)) return 0.5;
   return Math.max(0.1, Math.min(1, value));
+}
+
+function clampNoteDuration(value: unknown) {
+  const duration = Number(value);
+  if (!Number.isFinite(duration)) return undefined;
+  return Math.max(40, Math.min(10000, Math.round(duration)));
 }
 
 function clampFrequency(value: unknown) {
@@ -265,6 +351,10 @@ function clampPitchConfidence(value: unknown) {
 function normalizePitchSource(value: unknown) {
   if (value !== "melodia" && value !== "autocorrelation" && value !== "manual") return undefined;
   return value;
+}
+
+function frequencyToMidi(frequency: number) {
+  return Math.round(69 + 12 * Math.log2(frequency / 440));
 }
 
 function validateLevelMap(levelMap: LevelMap) {
