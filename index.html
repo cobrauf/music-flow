@@ -947,7 +947,8 @@
         url: "music-flow-sb-url",
         key: "music-flow-sb-anon-key",
         musicVolume: "music-flow-music-volume",
-        tapVolume: "music-flow-tap-volume"
+        tapVolume: "music-flow-tap-volume",
+        interactionMode: "music-flow-interaction-mode"
       };
       const traceCache = {
         dbName: "music-flow-trace-cache",
@@ -973,7 +974,7 @@
       const essentiaConfig = {
         wasmUrl: "https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia-wasm.es.js",
         coreUrl: "https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia.js-core.es.js",
-        hopSize: 128,
+        hopSize: 1024,
         minFrequency: 80,
         maxFrequency: 1200,
         minConfidence: 0.06,
@@ -1585,6 +1586,41 @@
         }
         updateInteractionControlVisibility();
         state.trace.bounds = null;
+      }
+
+      function applyInteractionMode(mode, persist = true) {
+        if (!isValidInteractionMode(mode)) {
+          mode = "off";
+        }
+        interactionModeInput.value = mode;
+        state.trace.mode = mode;
+        state.trace.wasPausedByGate = false;
+        state.pianoTileHits = new Set();
+        state.pianoHarmonyHits = new Set();
+        state.pianoTileFeedback = [];
+        syncTraceModeAssets();
+        if (persist) {
+          localStorage.setItem(storage.interactionMode, mode);
+        }
+        if (isTracingReady()) {
+          setTraceGate("ready");
+          return;
+        }
+        if (!isTraceInteractionMode()) {
+          resetAudioFade();
+        }
+        if (!isTraceInteractionMode() && state.isPlaying && audio.src && audio.paused) {
+          resumeAudioAfterTraceGate();
+        }
+        updateTraceStatus("ready");
+      }
+
+      function restoreInteractionMode() {
+        applyInteractionMode(localStorage.getItem(storage.interactionMode) || "off", false);
+      }
+
+      function isValidInteractionMode(mode) {
+        return Array.from(interactionModeInput.options).some((option) => option.value === mode);
       }
 
       function updateInteractionControlVisibility() {
@@ -4336,23 +4372,7 @@
       });
 
       interactionModeInput.addEventListener("change", () => {
-        state.trace.mode = interactionModeInput.value;
-        state.trace.wasPausedByGate = false;
-        state.pianoTileHits = new Set();
-        state.pianoHarmonyHits = new Set();
-        state.pianoTileFeedback = [];
-        syncTraceModeAssets();
-        if (isTracingReady()) {
-          setTraceGate("ready");
-          return;
-        }
-        if (!isTraceInteractionMode()) {
-          resetAudioFade();
-        }
-        if (!isTraceInteractionMode() && state.isPlaying && audio.src && audio.paused) {
-          resumeAudioAfterTraceGate();
-        }
-        updateTraceStatus("ready");
+        applyInteractionMode(interactionModeInput.value);
       });
 
       function bindSpeedControls(minInput, maxInput, minValueLabel, maxValueLabel, setMinSpeed, setMaxSpeed) {
@@ -4553,6 +4573,7 @@
         document.body.classList.remove("drawer-open");
       });
       loadSoundSettings();
+      restoreInteractionMode();
       resize();
       Promise.allSettled([loadCachedTracePattern(), loadMap()]).then(() => requestAnimationFrame(draw));
     </script>
